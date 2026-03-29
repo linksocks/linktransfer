@@ -61,6 +61,7 @@ func newRootCmd(ctx context.Context) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "lt",
 		Short:         "Transfer files between computers via linksocks tunnels",
+		Version:       Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}

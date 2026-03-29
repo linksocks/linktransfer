@@ -163,6 +163,31 @@ go run ./cmd/linktransfer send --help
 go run ./cmd/linktransfer recv --help
 ```
 
+## Release Automation
+
+This repository follows the same broad release flow as the in-tree linksocks reference:
+
+1. Update the version in [internal/linktransfer/version.go](internal/linktransfer/version.go) with `bump2version`.
+2. Push the generated version commit and `v*` tag.
+3. GitHub Actions creates a draft release from that tag.
+4. Publishing the draft release triggers binary builds and Docker image publishing.
+
+Example version bump:
+
+```bash
+python -m pip install bump2version
+bump2version patch
+git push --follow-tags
+```
+
+Release workflows live under [.github/workflows/build.yml](.github/workflows/build.yml), [.github/workflows/create-draft.yml](.github/workflows/create-draft.yml), and [.github/workflows/docker.yml](.github/workflows/docker.yml).
+
+Docker publishing expects these repository settings:
+
+- `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` secrets for Docker Hub pushes.
+- Optional `DOCKERHUB_IMAGE` repository variable if the Docker Hub image name should differ from `${{ github.repository_owner }}/linktransfer`.
+- `GITHUB_TOKEN` is used for pushes to `ghcr.io/<owner>/linktransfer`.
+
 ## Repository Layout
 
 - `cmd/linktransfer`: source entrypoint for running from the repository.
