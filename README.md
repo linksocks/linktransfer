@@ -1,6 +1,6 @@
 # Linktransfer
 
-linktransfer is a small CLI for sending files, folders, or text from one machine to another with a short code.
+Linktransfer is a small CLI for sending files, folders, or text from one machine to another with a short code.
 
 By default, it connects to our public [linksocks](https://github.com/linksocks/linksocks) service at `ws://l.zetx.tech`, deployed on top of Cloudflare, so it works out of the box without requiring you to deploy your own tunnel server.
 
