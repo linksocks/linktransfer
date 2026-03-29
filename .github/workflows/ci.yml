@@ -42,11 +42,3 @@ jobs:
 
       - name: Run tests
         run: go test -v -race -coverprofile="coverage.txt" -covermode=atomic -coverpkg="./internal/linktransfer" "./internal/linktransfer/..."
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
-        if: ${{ !startsWith(github.head_ref, 'dependabot/') && !startsWith(github.ref, 'refs/heads/dependabot/') }}
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          file: ./coverage.txt
-          fail_ci_if_error: true
