@@ -1,4 +1,4 @@
-module github.com/zzs/linktransfer
+module github.com/linksocks/linktransfer
 
 go 1.24.0
 
