@@ -2,92 +2,93 @@
 
 # Linktransfer
 
-Linktransfer is a CLI tool for sending files, folders, or text between two machines using a short code.
+Linktransfer 是一个通过短码在两台机器之间传输文件、文件夹或文本的命令行工具。
 
-[中文文档 / Chinese README](README.cn.md)
+[English / 英文文档](README.md)
 
-## Features
+## 功能
 
-1. Send and receive with a single command — no server setup required.
-2. Nearly unlimited traffic with high speed.
-3. Resumable transfers — interrupted uploads and downloads pick up where they left off.
-4. Automatic NAT traversal on LAN — seamless local network transfers.
-5. Self-hostable relay server via [linksocks.js](https://github.com/linksocks/linksocks.js), deployable on Cloudflare.
-6. Written in Go — lightweight, fast, and cross-platform.
+1. 两端各一条命令即可完成收发，无需预配服务器。
+2. 近乎无限流量，高速传输。
+3. 断点续传，传输中断后自动恢复。
+4. 内网自动打洞，局域网传输无需额外配置。
+5. 可通过 [linksocks.js](https://github.com/linksocks/linksocks.js) 自部署中转服务器，支持部署到 Cloudflare。
+6. 使用 Go 编写，轻量高效，跨平台支持。
 
-## Quick Start
+## 快速开始
 
-### Send a file
+### 发送文件
 
 ```bash
-# Sender side: pick a file to send
+# 发送端：选择要发送的文件
 lt send ./path/to/file
 
-# The terminal prints a receive command, e.g.:
+# 终端会输出接收命令，例如：
 #   lt recv 2f4e8c1d4a9b7c10
 
-# Receiver side: run the command printed above
+# 接收端：运行上面输出的命令
 lt recv 2f4e8c1d4a9b7c10
 ```
 
-### Send text
+### 发送文本
 
 ```bash
-# Sender side
+# 发送端
 lt send --text "hello from linktransfer"
 
-# Receiver side
+# 接收端
 lt recv <code>
 ```
 
-### Use a self-hosted server
+### 使用自部署服务器
 
 ```bash
-# Sender side
+# 发送端
 lt send ./file --url ws://your-server:8765
 
-# Receiver side
+# 接收端
 lt recv <code> --url ws://your-server:8765
 ```
 
-## Installation
+## 安装
 
-### Golang Version
+### Golang 版本
 
 ```bash
 go install github.com/linksocks/linktransfer/cmd/lt@latest
 ```
 
-Or download pre-built binaries from [releases page](https://github.com/linksocks/linktransfer/releases).
+或从 [Releases 页面](https://github.com/linksocks/linktransfer/releases) 下载预编译二进制文件。
 
 ### Docker
 
 ```bash
-# Send a file
+# 发送文件
 docker run --rm -i jackzzs/linktransfer send ./file
 
-# Receive a file
+# 接收文件
 docker run --rm -i jackzzs/linktransfer recv <code>
 ```
 
-## Self-Hosting the Server
+## 自部署服务器
 
-By default, linktransfer connects to the public linksocks service at `ws://l.zetx.tech`. You can deploy your own relay server for full control over the transfer channel.
+默认情况下，linktransfer 连接公共 linksocks 服务（`ws://l.zetx.tech`）。如需完全掌控传输通道，可自行部署中转服务器。
 
-[linksocks.js](https://github.com/linksocks/linksocks.js) is a lightweight relay server that can be deployed on Cloudflare Worker.
+[linksocks.js](https://github.com/linksocks/linksocks.js) 是轻量中继服务，可部署到 Cloudflare Worker。
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/linksocks/linksocks.js)
 
-Once deployed, point both sides to your server with `--url`:
+部署完成后，两端通过 `--url` 和 `--token` 指定服务器和密钥即可：
 
 ```bash
 lt send ./file --url ws://your-server:8765 --token your_secret_token
 lt recv <code> --url ws://your-server:8765 --token your_secret_token
 ```
 
-See the [linksocks documentation](https://github.com/linksocks/linksocks) for more options.
+更多选项请参阅 [linksocks 文档](https://github.com/linksocks/linksocks)。
 
 
-## License
+## 许可证
 
-Linktransfer is open source under the MIT license.
+Linktransfer 基于 MIT 许可证开源。
+
