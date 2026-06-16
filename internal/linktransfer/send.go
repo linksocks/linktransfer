@@ -112,8 +112,8 @@ func newSendCmd(ctx context.Context) *cobra.Command {
 				}()
 
 				select {
-			case sendErr = <-done:
-			case <-ctx.Done():
+				case sendErr = <-done:
+				case <-ctx.Done():
 				}
 
 				if sendErr == nil {
