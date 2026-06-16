@@ -200,6 +200,11 @@ func applyCommonCrocOptions(ops *croc.Options) {
 	// package sets it to debug in init(), which causes noisy debug logs before
 	// options are applied. Force warn level for clean CLI output.
 	log.SetLevel("warn")
+	if hostname, err := os.Hostname(); err == nil && hostname != "" {
+		ops.DisplayName = hostname
+	} else {
+		ops.DisplayName = "unknown"
+	}
 	ops.Debug = false
 	ops.DisableLocal = true
 	ops.OnlyLocal = false
