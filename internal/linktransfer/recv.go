@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
-	"github.com/schollz/croc/v10/src/croc"
-	"github.com/schollz/croc/v10/src/models"
+	"github.com/linksocks/croc/src/croc"
+	"github.com/linksocks/croc/src/models"
+	log "github.com/schollz/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -78,20 +80,49 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 				}
 			}
 
-			client, err := croc.New(ops)
-			if err != nil {
-				return err
+			const maxRetries = 3
+			var recvErr error
+			for attempt := 0; attempt <= maxRetries; attempt++ {
+				if attempt > 0 {
+					log.Warnf("[retry %d/%d] reconnecting with same code: %s", attempt, maxRetries, code)
+				}
+
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				default:
+				}
+
+				client, err := croc.NewCtx(ctx, ops)
+				if err != nil {
+					return normalizeRecvError(code, err)
+				}
+
+				done := make(chan error, 1)
+				go func() {
+					done <- client.Receive()
+				}()
+
+				select {
+				case recvErr = <-done:
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+
+				if recvErr == nil {
+					return nil
+				}
+
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+
+				log.Warnf("[error] receive failed: %v", normalizeRecvError(code, recvErr))
+				if attempt < maxRetries {
+					time.Sleep(time.Duration(attempt+1) * time.Second)
+				}
 			}
-			done := make(chan error, 1)
-			go func() {
-				done <- client.Receive()
-			}()
-			select {
-			case err := <-done:
-				return normalizeRecvError(code, err)
-			case <-ctx.Done():
-				return ctx.Err()
-			}
+			return normalizeRecvError(code, recvErr)
 		},
 	}
 

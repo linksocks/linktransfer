@@ -1,5 +1,6 @@
-filippo.io/edwards25519 v1.1.0 h1:FNf4tywRC1HmFuKW5xopWpigGjJKiJSV0Cqo0cJWDaA=
 filippo.io/edwards25519 v1.1.0/go.mod h1:BxyFTGdWcka3PhytdK4V28tE5sGfRvvvRV7EaN4VDT4=
+filippo.io/edwards25519 v1.2.0 h1:crnVqOiS4jqYleHd9vaKZ+HKtHfllngJIiOpNpoJsjo=
+filippo.io/edwards25519 v1.2.0/go.mod h1:xzAOLCNug/yB62zG1bQ8uziwrIqIuxhctzJT18Q77mc=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
 github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/chengxilo/virtualterm v1.0.4 h1:Z6IpERbRVlfB8WkOmtbHiDbBANU7cimRIof7mk9/PwM=
@@ -23,6 +24,8 @@ github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2
 github.com/inconshreveable/mousetrap v1.1.0/go.mod h1:vpF70FUmC8bwa3OWnCshd2FqLfsEA9PFc4w1p2J65bw=
 github.com/kalafut/imohash v1.1.1 h1:G/HYtKgteQSVU96LidSJEbUGoZOMiBcuXYxbeb2W9e4=
 github.com/kalafut/imohash v1.1.1/go.mod h1:6cn9lU0Sj8M4eu9UaQm1kR/5y3k/ayB68yntRhGloL4=
+github.com/linksocks/croc v1.0.0 h1:wyAXNzMZSKJkRCg1cdnMYIaTCqHgQiU8BCckmv+EBdE=
+github.com/linksocks/croc v1.0.0/go.mod h1:GoQbETMA2jYdBWplbNZMX/5WZUTp01qhd421IG8HVRU=
 github.com/linksocks/linksocks v1.8.3 h1:1fl9h6OB6PoCq9gFZ+Nv/r836AVlGp2z0gytR+JiXtY=
 github.com/linksocks/linksocks v1.8.3/go.mod h1:/6X0tl9/gHWPQ0pjlIgaxV3bM2dBT+RsH8YNe1yFWow=
 github.com/magisterquis/connectproxy v0.0.0-20200725203833-3582e84f0c9b h1:xZ59n7Frzh8CwyfAapUZLSg+gXH5m63YEaFCMpDHhpI=
@@ -53,8 +56,6 @@ github.com/rs/zerolog v1.33.0/go.mod h1:/7mN4D5sKwJLZQ2b/znpjC3/GQWY/xaDXUM0kKWR
 github.com/russross/blackfriday/v2 v2.1.0/go.mod h1:+Rmxgy9KzJVeS9/2gXHxylqXiyQDYRxCVz55jmeOWTM=
 github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06 h1:OkMGxebDjyw0ULyrTYWeN0UNCCkmCWfjPnIA2W6oviI=
 github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06/go.mod h1:+ePHsJ1keEjQtpvf9HHw0f4ZeJ0TLRsxhunSI2hYJSs=
-github.com/schollz/croc/v10 v10.3.1 h1:Te5kHnOSooMlj50RA3Qabi+DVuwb/cj4eRlpzucODrc=
-github.com/schollz/croc/v10 v10.3.1/go.mod h1:Bp7fAUnshamu+xFyDcxNIAu0Yuhp2PhZup4Qh9sLcv8=
 github.com/schollz/logger v1.2.0 h1:5WXfINRs3lEUTCZ7YXhj0uN+qukjizvITLm3Ca2m0Ho=
 github.com/schollz/logger v1.2.0/go.mod h1:P6F4/dGMGcx8wh+kG1zrNEd4vnNpEBY/mwEMd/vn6AM=
 github.com/schollz/pake/v3 v3.1.0 h1:ZFGqqDlRWJlnE6IqnLmma7XpUgcvb8B1CSXp08ug334=
@@ -103,8 +104,8 @@ golang.org/x/net v0.15.0/go.mod h1:idbUs1IY1+zTqbi8yxTbhexhEEk5ur9LInksu6HrEpk=
 golang.org/x/net v0.21.0/go.mod h1:bIjVDfnllIU7BJ2DNgfnXvpSvtn8VRwhlsaeUTyUS44=
 golang.org/x/net v0.25.0/go.mod h1:JkAGAh7GEvH74S6FOH42FLoXpXbE/aqXSrIQjXgsiwM=
 golang.org/x/net v0.34.0/go.mod h1:di0qlW3YNM5oh6GqDGQr92MyTozJPmybPK4Ev/Gm31k=
-golang.org/x/net v0.49.0 h1:eeHFmOGUTtaaPSGNmjBKpbng9MulQsJURQUAfUwY++o=
-golang.org/x/net v0.49.0/go.mod h1:/ysNB2EvaqvesRkuLAyjI1ycPZlQHM3q01F02UY/MV8=
+golang.org/x/net v0.50.0 h1:ucWh9eiCGyDR3vtzso0WMQinm2Dnt8cFMuQa9K33J60=
+golang.org/x/net v0.50.0/go.mod h1:UgoSli3F/pBgdJBHCTc+tp3gmrU4XswgGRgtnwWTfyM=
 golang.org/x/sync v0.0.0-20190423024810-112230192c58/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
 golang.org/x/sync v0.0.0-20210220032951-036812b2e83c/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
 golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=

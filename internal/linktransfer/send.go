@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
-	"github.com/schollz/croc/v10/src/croc"
-	"github.com/schollz/croc/v10/src/models"
+	"github.com/linksocks/croc/src/croc"
+	"github.com/linksocks/croc/src/models"
+	log "github.com/schollz/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -79,24 +81,53 @@ func newSendCmd(ctx context.Context) *cobra.Command {
 
 			fmt.Fprintf(os.Stderr, "\nOn the other computer run:\n  lt recv %s\n\n", code)
 
-			client, err := croc.New(ops)
-			if err != nil {
-				return err
-			}
-
 			sf := newStderrFilter()
 			sf.suppress(true)
 
-			done := make(chan error, 1)
-			go func() {
-				done <- client.Send(filesInfo, emptyFolders, totalFolders)
-			}()
-
+			const maxRetries = 3
 			var sendErr error
-			select {
+			for attempt := 0; attempt <= maxRetries; attempt++ {
+				if attempt > 0 {
+					sf.restore()
+					log.Warnf("[retry %d/%d] reconnecting with same code: %s", attempt, maxRetries, code)
+					sf.suppress(true)
+				}
+
+				select {
+				case <-ctx.Done():
+					sf.restore()
+					return ctx.Err()
+				default:
+				}
+
+				client, err := croc.NewCtx(ctx, ops)
+				if err != nil {
+					sf.restore()
+					return err
+				}
+
+				done := make(chan error, 1)
+				go func() {
+					done <- client.Send(filesInfo, emptyFolders, totalFolders)
+				}()
+
+				select {
 			case sendErr = <-done:
 			case <-ctx.Done():
-				sendErr = ctx.Err()
+				}
+
+				if sendErr == nil {
+					break
+				}
+
+				if ctx.Err() != nil {
+					break
+				}
+
+				log.Warnf("[error] transfer failed: %v", sendErr)
+				if attempt < maxRetries {
+					time.Sleep(time.Duration(attempt+1) * time.Second)
+				}
 			}
 
 			sf.restore()

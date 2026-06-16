@@ -5,15 +5,15 @@ go 1.24.0
 toolchain go1.24.12
 
 require (
+	github.com/linksocks/croc v1.0.0
 	github.com/linksocks/linksocks v1.8.3
 	github.com/rs/zerolog v1.33.0
-	github.com/schollz/croc/v10 v10.3.1
 	github.com/schollz/logger v1.2.0
 	github.com/spf13/cobra v1.8.1
 )
 
 require (
-	filippo.io/edwards25519 v1.1.0 // indirect
+	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/denisbrodbeck/machineid v1.0.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -37,7 +37,7 @@ require (
 	github.com/tscholl2/siec v0.0.0-20240310163802-c2c6f6198406 // indirect
 	github.com/twmb/murmur3 v1.1.8 // indirect
 	golang.org/x/crypto v0.48.0 // indirect
-	golang.org/x/net v0.49.0 // indirect
+	golang.org/x/net v0.50.0 // indirect
 	golang.org/x/sync v0.16.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/term v0.40.0 // indirect

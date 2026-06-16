@@ -12,11 +12,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/linksocks/croc/src/comm"
+	"github.com/linksocks/croc/src/croc"
+	"github.com/linksocks/croc/src/tcp"
 	"github.com/linksocks/linksocks/linksocks"
 	"github.com/rs/zerolog"
-	"github.com/schollz/croc/v10/src/comm"
-	"github.com/schollz/croc/v10/src/croc"
-	"github.com/schollz/croc/v10/src/tcp"
 	log "github.com/schollz/logger"
 	"github.com/spf13/cobra"
 )
