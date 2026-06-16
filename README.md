@@ -1,4 +1,4 @@
-[![GitHub Stars](https://img.shields.io/github/stars/linksocks/linktransfer?style=flat&logo=github)](https://github.com/linksocks/linktransfer) [![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/linksocks/linktransfer/ci.yml?logo=github&label=Tests)](https://github.com/linksocks/linktransfer/actions) ![Go Version](https://img.shields.io/github/go-mod/go-version/linksocks/linktransfer) [![Go Reference](https://pkg.go.dev/badge/github.com/linksocks/linktransfer.svg)](https://pkg.go.dev/github.com/linksocks/linktransfer) [![Go Report Card](https://goreportcard.com/badge/github.com/linksocks/linktransfer)](https://goreportcard.com/report/github.com/linksocks/linktransfer) [![Docker Pulls](https://img.shields.io/docker/pulls/jackzzs/linktransfer)](https://hub.docker.com/r/jackzzs/linktransfer) ![License](https://img.shields.io/github/license/linksocks/linktransfer)
+[![GitHub Stars](https://img.shields.io/github/stars/linksocks/linktransfer?style=flat&logo=github&v=2)](https://github.com/linksocks/linktransfer) [![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/linksocks/linktransfer/ci.yml?logo=github&label=Tests&v=2)](https://github.com/linksocks/linktransfer/actions) ![Go Version](https://img.shields.io/github/go-mod/go-version/linksocks/linktransfer) [![Go Reference](https://pkg.go.dev/badge/github.com/linksocks/linktransfer.svg)](https://pkg.go.dev/github.com/linksocks/linktransfer) [![Go Report Card](https://goreportcard.com/badge/github.com/linksocks/linktransfer)](https://goreportcard.com/report/github.com/linksocks/linktransfer) [![Docker Pulls](https://img.shields.io/docker/pulls/jackzzs/linktransfer)](https://hub.docker.com/r/jackzzs/linktransfer) ![License](https://img.shields.io/github/license/linksocks/linktransfer?v=2)
 
 # Linktransfer
 
@@ -8,7 +8,7 @@ Linktransfer is a CLI tool for sending files, folders, or text between two machi
 
 ## Features
 
-1. Send and receive with a single command — no server setup required.
+1. Send and receive with a simple command — no server setup required.
 2. Nearly unlimited traffic with high speed.
 3. Resumable transfers — interrupted uploads and downloads pick up where they left off.
 4. Automatic NAT traversal on LAN — seamless local network transfers.
