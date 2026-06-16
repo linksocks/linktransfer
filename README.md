@@ -8,7 +8,7 @@ Linktransfer is a CLI tool for sending files, folders, or text between two machi
 
 ## Features
 
-1. Send and receive with a single command — no server setup required.
+1. Send and receive with a simple command — no server setup required.
 2. Nearly unlimited traffic with high speed.
 3. Resumable transfers — interrupted uploads and downloads pick up where they left off.
 4. Automatic NAT traversal on LAN — seamless local network transfers.
