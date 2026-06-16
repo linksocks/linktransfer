@@ -9,7 +9,6 @@ import (
 
 	"github.com/linksocks/croc/src/croc"
 	"github.com/linksocks/croc/src/models"
-	log "github.com/schollz/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -24,7 +23,7 @@ func normalizeRecvError(code string, err error) error {
 		strings.Contains(msg, "could not connect to localhost:") ||
 		strings.Contains(msg, "bad password") ||
 		strings.Contains(msg, "message authentication failed") {
-		return fmt.Errorf("invalid code or sender is unavailable (code: %s)", code)
+		return fmt.Errorf("unable to connect to sender. Check that the code is correct and the sender is still waiting. (code: %s)", code)
 	}
 
 	return err
@@ -83,10 +82,6 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 			const maxRetries = 3
 			var recvErr error
 			for attempt := 0; attempt <= maxRetries; attempt++ {
-				if attempt > 0 {
-					log.Warnf("[retry %d/%d] reconnecting with same code: %s", attempt, maxRetries, code)
-				}
-
 				select {
 				case <-ctx.Done():
 					return ctx.Err()
@@ -117,12 +112,15 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 					return ctx.Err()
 				}
 
-				log.Warnf("[error] receive failed: %v", normalizeRecvError(code, recvErr))
 				if attempt < maxRetries {
-					time.Sleep(time.Duration(attempt+1) * time.Second)
+					delay := time.Duration(attempt+1) * time.Second
+					fmt.Fprintf(os.Stderr, "\nSender is not available yet. Retrying in %s (%d/%d)...\n", delay, attempt+1, maxRetries)
+					time.Sleep(delay)
 				}
 			}
-			return normalizeRecvError(code, recvErr)
+
+			fmt.Fprintln(os.Stderr)
+			return fmt.Errorf("receive failed after %d attempts: %w", maxRetries+1, normalizeRecvError(code, recvErr))
 		},
 	}
 
