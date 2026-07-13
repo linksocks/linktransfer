@@ -3,6 +3,7 @@ package linktransfer
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"time"
@@ -28,6 +29,9 @@ func newSendCmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if tunnel.Threads < 1 {
+				return fmt.Errorf("--threads must be at least 1")
+			}
 			if code == "" {
 				code = getRandomCode()
 			}
@@ -54,14 +58,15 @@ func newSendCmd(ctx context.Context) *cobra.Command {
 			ops.SendingText = text != ""
 			ops.RelayPassword = models.DEFAULT_PASSPHRASE
 			ops.DisableClipboard = true
+			ops.SilenceInstructions = true
 
 			filesInfo, emptyFolders, totalFolders, err := croc.GetFilesInfo(fnames, ops.ZipFolder, ops.GitIgnore, ops.Exclude)
 			if err != nil {
 				return err
 			}
 
-			basePort := relayBasePortFromCode(code)
-			relayPorts, err := setupLocalRelay(basePort, relayPortCount, ops.RelayPassword)
+			basePort := relayBasePortFromCode(code, tunnel.Threads)
+			relayPorts, err := setupLocalRelay(basePort, tunnel.Threads+1, ops.RelayPassword)
 			if err != nil {
 				return fmt.Errorf("failed to start local relay: %w", err)
 			}
@@ -81,28 +86,23 @@ func newSendCmd(ctx context.Context) *cobra.Command {
 
 			fmt.Fprintf(os.Stderr, "\nOn the other computer run:\n  lt recv %s\n\n", code)
 
-			sf := newStderrFilter()
-			sf.suppress(true)
-
 			const maxRetries = 3
 			var sendErr error
 			for attempt := 0; attempt <= maxRetries; attempt++ {
 				if attempt > 0 {
-					sf.restore()
 					log.Warnf("[retry %d/%d] reconnecting with same code: %s", attempt, maxRetries, code)
-					sf.suppress(true)
 				}
 
 				select {
 				case <-ctx.Done():
-					sf.restore()
 					return ctx.Err()
 				default:
 				}
 
-				client, err := croc.NewCtx(ctx, ops)
+				attemptCtx, cancelAttempt := context.WithCancel(ctx)
+				client, err := croc.NewCtx(attemptCtx, ops)
 				if err != nil {
-					sf.restore()
+					cancelAttempt()
 					return err
 				}
 
@@ -111,26 +111,36 @@ func newSendCmd(ctx context.Context) *cobra.Command {
 					done <- client.Send(filesInfo, emptyFolders, totalFolders)
 				}()
 
+				receiverDisconnect := watchDisconnect(attemptCtx, trt, cancelAttempt)
+
 				select {
 				case sendErr = <-done:
+				case sendErr = <-receiverDisconnect:
+					select {
+					case <-done:
+					case <-time.After(time.Second):
+					}
 				case <-ctx.Done():
+					cancelAttempt()
+					return ctx.Err()
 				}
+				cancelAttempt()
 
 				if sendErr == nil {
 					break
 				}
 
 				if ctx.Err() != nil {
-					break
+					return ctx.Err()
 				}
 
-				log.Warnf("[error] transfer failed: %v", sendErr)
 				if attempt < maxRetries {
-					time.Sleep(time.Duration(attempt+1) * time.Second)
+					base := time.Duration(attempt+1) * time.Second
+					jitter := time.Duration(rand.Intn(500)) * time.Millisecond
+					time.Sleep(base + jitter)
 				}
 			}
 
-			sf.restore()
 			return sendErr
 		},
 	}

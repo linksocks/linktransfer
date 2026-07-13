@@ -24,15 +24,16 @@ import (
 const defaultWSURL = "ws://l.zetx.tech"
 
 const (
-	relayPortMin   = 20000
-	relayPortMax   = 60000
-	relayPortCount = 5
+	relayPortMin     = 20000
+	relayPortMax     = 60000
+	defaultThreads   = 4
 )
 
 type tunnelOptions struct {
-	URL   string
-	Token string
-	Debug bool
+	URL     string
+	Token   string
+	Debug   bool
+	Threads int
 }
 
 func tokenFromCode(code string) string {
@@ -40,28 +41,29 @@ func tokenFromCode(code string) string {
 	return hex.EncodeToString(h[:16])
 }
 
-func relayBasePortFromCode(code string) int {
+func relayBasePortFromCode(code string, numPorts int) int {
 	h := sha256.Sum256([]byte("lt:relay:" + code))
 	v := binary.BigEndian.Uint32(h[:4])
 
-	slots := (relayPortMax - relayPortMin + 1 - relayPortCount) / relayPortCount
+	totalPorts := numPorts + 1 // +1 for control port
+	slots := (relayPortMax - relayPortMin + 1 - totalPorts) / totalPorts
 	if slots < 1 {
 		return relayPortMin
 	}
 	slot := int(v % uint32(slots))
-	return relayPortMin + slot*relayPortCount
+	return relayPortMin + slot*totalPorts
 }
 
 func relayPortsFromBase(basePort, numPorts int) []string {
-	ports := make([]string, 0, numPorts)
-	for i := 0; i < numPorts; i++ {
+	ports := make([]string, 0, numPorts+1) // +1 for control port
+	for i := 0; i <= numPorts; i++ {
 		ports = append(ports, strconv.Itoa(basePort+i))
 	}
 	return ports
 }
 
-func relayPortsFromCode(code string) []string {
-	return relayPortsFromBase(relayBasePortFromCode(code), relayPortCount)
+func relayPortsFromCode(code string, numPorts int) []string {
+	return relayPortsFromBase(relayBasePortFromCode(code, numPorts), numPorts)
 }
 
 func newLinksocksLogger(debug bool) zerolog.Logger {
@@ -81,7 +83,8 @@ func newLinksocksLogger(debug bool) zerolog.Logger {
 }
 
 type tunnelRuntime struct {
-	close func()
+	close        func()
+	partnerCount func() int
 }
 
 func startSenderTunnel(ctx context.Context, t tunnelOptions) (*tunnelRuntime, error) {
@@ -107,10 +110,13 @@ func startSenderTunnel(ctx context.Context, t tunnelOptions) (*tunnelRuntime, er
 		return nil, fmt.Errorf("register connector token: %w", err)
 	}
 
-	return &tunnelRuntime{close: func() {
-		_ = client.RemoveConnector(t.Token)
-		client.Close()
-	}}, nil
+	return &tunnelRuntime{
+		close: func() {
+			_ = client.RemoveConnector(t.Token)
+			client.Close()
+		},
+		partnerCount: client.GetPartnersCount,
+	}, nil
 }
 
 func startReceiverTunnel(ctx context.Context, t tunnelOptions) (*tunnelRuntime, error) {
@@ -154,7 +160,10 @@ func startReceiverTunnel(ctx context.Context, t tunnelOptions) (*tunnelRuntime, 
 	}
 
 	comm.Socks5Proxy = fmt.Sprintf("%s:%d", socksHost, socksPort)
-	return &tunnelRuntime{close: client.Close}, nil
+	return &tunnelRuntime{
+		close:        client.Close,
+		partnerCount: client.GetPartnersCount,
+	}, nil
 }
 
 func setupLocalRelay(basePort, numPorts int, password string) ([]string, error) {
@@ -217,5 +226,6 @@ func applyCommonCrocOptions(ops *croc.Options) {
 func addTunnelFlags(cmd *cobra.Command, t *tunnelOptions) {
 	cmd.Flags().StringVarP(&t.URL, "url", "u", defaultWSURL, "linksocks server URL")
 	cmd.Flags().StringVarP(&t.Token, "token", "t", "", "linksocks token (derived from code if omitted)")
+	cmd.Flags().IntVar(&t.Threads, "threads", defaultThreads, "Number of parallel transfer threads")
 	cmd.Flags().BoolVar(&t.Debug, "debug", false, "Enable debug logs")
 }
