@@ -2,6 +2,7 @@ package linktransfer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"os"
@@ -30,27 +31,41 @@ func normalizeRecvError(code string, err error) error {
 	return err
 }
 
+func isPeerGoneError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "disconnected") ||
+		strings.Contains(msg, "peer left") ||
+		strings.Contains(msg, "sender is gone") ||
+		strings.Contains(msg, "receiver is gone")
+}
+
 func recvRetryMessage(err error) string {
-	if err != nil && strings.Contains(strings.ToLower(err.Error()), "sender disconnected") {
-		return "Sender disconnected."
+	if isPeerGoneError(err) {
+		return "Sender left the transfer."
 	}
 	return "Sender is not available yet."
 }
 
 // waitPeerReady blocks until the tunnel reports at least one partner or ctx is cancelled.
 // Returns true if a partner appeared, false if ctx was cancelled or timed out.
-func waitPeerReady(ctx context.Context, trt *tunnelRuntime) bool {
+func waitPeerReady(ctx context.Context, trt *tunnelRuntime, timeout time.Duration) bool {
 	if trt == nil || trt.partnerCount == nil {
 		return true
 	}
-	timeout := time.After(30 * time.Second)
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	deadline := time.After(timeout)
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return false
-		case <-timeout:
+		case <-deadline:
 			return false
 		case <-ticker.C:
 			if trt.partnerCount() > 0 {
@@ -60,9 +75,15 @@ func waitPeerReady(ctx context.Context, trt *tunnelRuntime) bool {
 	}
 }
 
-func watchDisconnect(ctx context.Context, trt *tunnelRuntime, cancel context.CancelFunc) <-chan error {
+// watchPeerDisconnect cancels the attempt when a previously-seen tunnel partner
+// disappears, or when this side's WebSocket drops after a partner was present.
+// peerLabel is used only in the returned error ("sender" / "receiver").
+func watchPeerDisconnect(ctx context.Context, trt *tunnelRuntime, cancel context.CancelFunc, peerLabel string) <-chan error {
 	if trt == nil || trt.partnerCount == nil {
 		return nil
+	}
+	if peerLabel == "" {
+		peerLabel = "peer"
 	}
 
 	done := make(chan error, 1)
@@ -70,20 +91,35 @@ func watchDisconnect(ctx context.Context, trt *tunnelRuntime, cancel context.Can
 		ticker := time.NewTicker(500 * time.Millisecond)
 		defer ticker.Stop()
 
-		seenSender := trt.partnerCount() > 0
+		seenPartner := trt.partnerCount() > 0
 		var lostSince time.Time
+
+		var discCh <-chan struct{}
+		if trt.disconnected != nil {
+			discCh = trt.disconnected()
+		}
+
 		for {
 			select {
 			case <-ctx.Done():
 				return
+			case <-discCh:
+				if seenPartner {
+					cancel()
+					done <- fmt.Errorf("%s is gone (tunnel closed)", peerLabel)
+					return
+				}
+				if trt.disconnected != nil {
+					discCh = trt.disconnected()
+				}
 			case <-ticker.C:
 				count := trt.partnerCount()
 				if count > 0 {
-					seenSender = true
+					seenPartner = true
 					lostSince = time.Time{}
 					continue
 				}
-				if seenSender {
+				if seenPartner {
 					if lostSince.IsZero() {
 						lostSince = time.Now()
 						continue
@@ -92,7 +128,7 @@ func watchDisconnect(ctx context.Context, trt *tunnelRuntime, cancel context.Can
 						continue
 					}
 					cancel()
-					done <- fmt.Errorf("sender disconnected")
+					done <- fmt.Errorf("%s is gone", peerLabel)
 					return
 				}
 			}
@@ -147,6 +183,7 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 			ops.RelayPorts = relayPortsFromCode(code, tunnel.Threads)
 			ops.RelayAddress = "localhost:" + ops.RelayPorts[0]
 			ops.NoPrompt = true
+			ops.AutoResume = true
 			ops.SilenceInstructions = true
 
 			if out != "" {
@@ -155,26 +192,31 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 				}
 			}
 
-			const maxRetries = 3
+			// Connection setup may need a few tries; mid-transfer peer loss should not.
+			const maxConnectRetries = 3
 			var recvErr error
-			for attempt := 0; attempt <= maxRetries; attempt++ {
+			connectedOnce := false
+
+			for attempt := 0; attempt <= maxConnectRetries; attempt++ {
 				select {
 				case <-ctx.Done():
 					return ctx.Err()
 				default:
 				}
 
-				// Wait for sender to appear on the tunnel before attempting (except first try)
 				if attempt > 0 {
+					if connectedOnce || isPeerGoneError(recvErr) {
+						// Sender vanished after we had a live session: stop quickly.
+						break
+					}
 					fmt.Fprintf(os.Stderr, "\nWaiting for sender to be ready...\n")
 					if ctx.Err() != nil {
 						return ctx.Err()
 					}
-					if !waitPeerReady(ctx, trt) {
+					if !waitPeerReady(ctx, trt, 15*time.Second) {
 						if ctx.Err() != nil {
 							return ctx.Err()
 						}
-						// Timeout waiting for sender - continue to retry anyway
 						fmt.Fprintf(os.Stderr, "Sender not detected, attempting reconnect...\n")
 					}
 				}
@@ -190,13 +232,17 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 				go func() {
 					done <- client.Receive()
 				}()
-				senderDisconnect := watchDisconnect(attemptCtx, trt, cancelAttempt)
+				senderDisconnect := watchPeerDisconnect(attemptCtx, trt, cancelAttempt, "sender")
 
 				select {
 				case recvErr = <-done:
 				case recvErr = <-senderDisconnect:
 					select {
-					case <-done:
+					case recvResult := <-done:
+						// The peer vanished at the same moment the transfer finished.
+						// Trust the actual transfer result so a successful completion
+						// is not misreported as a peer loss.
+						recvErr = recvResult
 					case <-time.After(time.Second):
 					}
 				case <-ctx.Done():
@@ -206,6 +252,7 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 				cancelAttempt()
 
 				if recvErr == nil {
+					fmt.Fprintln(os.Stderr, "Transfer complete.")
 					return nil
 				}
 
@@ -213,11 +260,21 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 					return ctx.Err()
 				}
 
-				if attempt < maxRetries {
+				// Any successful tunnel pairing or progress attempt counts as "had a session".
+				if trt.partnerCount != nil && trt.partnerCount() > 0 {
+					connectedOnce = true
+				}
+				if isPeerGoneError(recvErr) {
+					connectedOnce = true
+					fmt.Fprintln(os.Stderr, "\nSender left. Incomplete files may remain in the output folder.")
+					break
+				}
+
+				if attempt < maxConnectRetries {
 					base := time.Duration(attempt+1) * time.Second
 					jitter := time.Duration(rand.Intn(500)) * time.Millisecond
 					delay := base + jitter
-					fmt.Fprintf(os.Stderr, "\n%s Retrying in %s (%d/%d)...\n", recvRetryMessage(recvErr), delay.Round(time.Millisecond), attempt+1, maxRetries)
+					fmt.Fprintf(os.Stderr, "\n%s Retrying in %s (%d/%d)...\n", recvRetryMessage(recvErr), delay.Round(time.Millisecond), attempt+1, maxConnectRetries)
 					select {
 					case <-ctx.Done():
 						return ctx.Err()
@@ -227,7 +284,13 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 			}
 
 			fmt.Fprintln(os.Stderr)
-			return fmt.Errorf("receive failed after %d attempts: %w", maxRetries+1, normalizeRecvError(code, recvErr))
+			if isPeerGoneError(recvErr) {
+				return fmt.Errorf("transfer interrupted: sender left (code: %s)", code)
+			}
+			if recvErr == nil {
+				recvErr = errors.New("receive failed")
+			}
+			return fmt.Errorf("receive failed after %d attempts: %w", maxConnectRetries+1, normalizeRecvError(code, recvErr))
 		},
 	}
 

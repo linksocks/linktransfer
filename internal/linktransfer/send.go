@@ -6,11 +6,11 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/linksocks/croc/src/croc"
 	"github.com/linksocks/croc/src/models"
-	log "github.com/schollz/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -86,11 +86,17 @@ func newSendCmd(ctx context.Context) *cobra.Command {
 
 			fmt.Fprintf(os.Stderr, "\nOn the other computer run:\n  lt recv %s\n\n", code)
 
+			// After a live receiver drops, re-arm the same code a few times so a
+			// new receiver can join without restarting the sender manually.
 			const maxRetries = 3
 			var sendErr error
 			for attempt := 0; attempt <= maxRetries; attempt++ {
 				if attempt > 0 {
-					log.Warnf("[retry %d/%d] reconnecting with same code: %s", attempt, maxRetries, code)
+					if isPeerGoneError(sendErr) {
+						fmt.Fprintf(os.Stderr, "\nReceiver left. Waiting for a new receiver with the same code (%d/%d)...\n  lt recv %s\n\n", attempt, maxRetries, code)
+					} else {
+						fmt.Fprintf(os.Stderr, "\nTransfer failed (%v). Retrying with the same code (%d/%d)...\n  lt recv %s\n\n", sendErr, attempt, maxRetries, code)
+					}
 				}
 
 				select {
@@ -111,13 +117,17 @@ func newSendCmd(ctx context.Context) *cobra.Command {
 					done <- client.Send(filesInfo, emptyFolders, totalFolders)
 				}()
 
-				receiverDisconnect := watchDisconnect(attemptCtx, trt, cancelAttempt)
+				receiverDisconnect := watchPeerDisconnect(attemptCtx, trt, cancelAttempt, "receiver")
 
 				select {
 				case sendErr = <-done:
 				case sendErr = <-receiverDisconnect:
 					select {
-					case <-done:
+					case sendResult := <-done:
+						// The peer vanished at the same moment the transfer finished.
+						// Trust the actual transfer result so a successful completion
+						// is not misreported as a peer loss.
+						sendErr = sendResult
 					case <-time.After(time.Second):
 					}
 				case <-ctx.Done():
@@ -127,7 +137,8 @@ func newSendCmd(ctx context.Context) *cobra.Command {
 				cancelAttempt()
 
 				if sendErr == nil {
-					break
+					fmt.Fprintln(os.Stderr, "Transfer complete.")
+					return nil
 				}
 
 				if ctx.Err() != nil {
@@ -135,12 +146,27 @@ func newSendCmd(ctx context.Context) *cobra.Command {
 				}
 
 				if attempt < maxRetries {
-					base := time.Duration(attempt+1) * time.Second
-					jitter := time.Duration(rand.Intn(500)) * time.Millisecond
-					time.Sleep(base + jitter)
+					// Peer-gone: short pause then re-open wait. Other errors: backoff.
+					delay := 500 * time.Millisecond
+					if !isPeerGoneError(sendErr) {
+						base := time.Duration(attempt+1) * time.Second
+						jitter := time.Duration(rand.Intn(500)) * time.Millisecond
+						delay = base + jitter
+					}
+					select {
+					case <-ctx.Done():
+						return ctx.Err()
+					case <-time.After(delay):
+					}
 				}
 			}
 
+			if isPeerGoneError(sendErr) {
+				return fmt.Errorf("no receiver reconnected after %d attempts (code: %s)", maxRetries+1, code)
+			}
+			if sendErr != nil && strings.TrimSpace(sendErr.Error()) == "" {
+				return fmt.Errorf("send failed")
+			}
 			return sendErr
 		},
 	}

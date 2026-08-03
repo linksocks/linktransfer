@@ -5,7 +5,7 @@ go 1.24.0
 toolchain go1.24.12
 
 require (
-	github.com/linksocks/croc v1.0.3
+	github.com/linksocks/croc v1.0.4
 	github.com/linksocks/linksocks v1.8.3
 	github.com/rs/zerolog v1.33.0
 	github.com/schollz/logger v1.2.0
@@ -43,3 +43,5 @@ require (
 	golang.org/x/term v0.40.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 )
+
+replace github.com/linksocks/croc => ./ref/croc

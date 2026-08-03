@@ -24,9 +24,9 @@ import (
 const defaultWSURL = "ws://l.zetx.tech"
 
 const (
-	relayPortMin     = 20000
-	relayPortMax     = 60000
-	defaultThreads   = 4
+	relayPortMin   = 20000
+	relayPortMax   = 60000
+	defaultThreads = 4
 )
 
 type tunnelOptions struct {
@@ -85,6 +85,7 @@ func newLinksocksLogger(debug bool) zerolog.Logger {
 type tunnelRuntime struct {
 	close        func()
 	partnerCount func() int
+	disconnected func() <-chan struct{}
 }
 
 func startSenderTunnel(ctx context.Context, t tunnelOptions) (*tunnelRuntime, error) {
@@ -116,6 +117,7 @@ func startSenderTunnel(ctx context.Context, t tunnelOptions) (*tunnelRuntime, er
 			client.Close()
 		},
 		partnerCount: client.GetPartnersCount,
+		disconnected: client.DisconnectedChan,
 	}, nil
 }
 
@@ -163,6 +165,7 @@ func startReceiverTunnel(ctx context.Context, t tunnelOptions) (*tunnelRuntime, 
 	return &tunnelRuntime{
 		close:        client.Close,
 		partnerCount: client.GetPartnersCount,
+		disconnected: client.DisconnectedChan,
 	}, nil
 }
 
