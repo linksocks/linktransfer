@@ -1,3 +1,3 @@
 package linktransfer
 
-var Version = "v1.0.6"
+var Version = "v1.0.7"
