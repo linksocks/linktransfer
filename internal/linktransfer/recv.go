@@ -183,7 +183,6 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 			ops.RelayPorts = relayPortsFromCode(code, tunnel.Threads)
 			ops.RelayAddress = "localhost:" + ops.RelayPorts[0]
 			ops.NoPrompt = true
-			ops.AutoResume = true
 			ops.SilenceInstructions = true
 
 			if out != "" {
