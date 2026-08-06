@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"math/rand"
+	"net"
 	"os"
 	"strings"
 	"time"
@@ -35,11 +37,32 @@ func isPeerGoneError(err error) bool {
 	if err == nil {
 		return false
 	}
+	if errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF) {
+		return true
+	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "disconnected") ||
 		strings.Contains(msg, "peer left") ||
 		strings.Contains(msg, "sender is gone") ||
-		strings.Contains(msg, "receiver is gone")
+		strings.Contains(msg, "receiver is gone") ||
+		strings.Contains(msg, "use of closed network connection") ||
+		strings.Contains(msg, "connection reset by peer") ||
+		strings.Contains(msg, "broken pipe") ||
+		strings.Contains(msg, "unexpected eof")
+}
+
+func transferSessionActive(active bool, partnerCount int, err error) bool {
+	return active || partnerCount > 0 || isPeerGoneError(err)
+}
+
+func transferResultAfterPeerDisconnect(peerErr, transferErr error) error {
+	if transferErr == nil {
+		return nil
+	}
+	if errors.Is(transferErr, context.Canceled) {
+		return peerErr
+	}
+	return transferErr
 }
 
 func recvRetryMessage(err error) string {
@@ -191,12 +214,13 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 				}
 			}
 
-			// Connection setup may need a few tries; mid-transfer peer loss should not.
+			// Connection setup has a bounded retry budget; an interrupted session waits for reconnection.
 			const maxConnectRetries = 3
 			var recvErr error
 			connectedOnce := false
+			attempt := 0
 
-			for attempt := 0; attempt <= maxConnectRetries; attempt++ {
+			for {
 				select {
 				case <-ctx.Done():
 					return ctx.Err()
@@ -204,11 +228,14 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 				}
 
 				if attempt > 0 {
-					if connectedOnce || isPeerGoneError(recvErr) {
-						// Sender vanished after we had a live session: stop quickly.
-						break
+					if connectedOnce {
+						fmt.Fprintf(os.Stderr, "\nWaiting for sender to reconnect...\n")
+					} else {
+						if attempt > maxConnectRetries {
+							break
+						}
+						fmt.Fprintf(os.Stderr, "\nWaiting for sender to be ready...\n")
 					}
-					fmt.Fprintf(os.Stderr, "\nWaiting for sender to be ready...\n")
 					if ctx.Err() != nil {
 						return ctx.Err()
 					}
@@ -221,6 +248,7 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 				}
 
 				attemptCtx, cancelAttempt := context.WithCancel(ctx)
+				ops.Overwrite = attempt > 0
 				client, err := croc.NewCtx(attemptCtx, ops)
 				if err != nil {
 					cancelAttempt()
@@ -241,7 +269,7 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 						// The peer vanished at the same moment the transfer finished.
 						// Trust the actual transfer result so a successful completion
 						// is not misreported as a peer loss.
-						recvErr = recvResult
+						recvErr = transferResultAfterPeerDisconnect(recvErr, recvResult)
 					case <-time.After(time.Second):
 					}
 				case <-ctx.Done():
@@ -259,27 +287,34 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 					return ctx.Err()
 				}
 
-				// Any successful tunnel pairing or progress attempt counts as "had a session".
-				if trt.partnerCount != nil && trt.partnerCount() > 0 {
-					connectedOnce = true
+				partnerCount := 0
+				if trt.partnerCount != nil {
+					partnerCount = trt.partnerCount()
 				}
-				if isPeerGoneError(recvErr) {
-					connectedOnce = true
-					fmt.Fprintln(os.Stderr, "\nSender left. Incomplete files may remain in the output folder.")
+				connectedOnce = transferSessionActive(connectedOnce, partnerCount, recvErr)
+
+				if !connectedOnce && attempt >= maxConnectRetries {
 					break
 				}
 
-				if attempt < maxConnectRetries {
-					base := time.Duration(attempt+1) * time.Second
-					jitter := time.Duration(rand.Intn(500)) * time.Millisecond
-					delay := base + jitter
-					fmt.Fprintf(os.Stderr, "\n%s Retrying in %s (%d/%d)...\n", recvRetryMessage(recvErr), delay.Round(time.Millisecond), attempt+1, maxConnectRetries)
-					select {
-					case <-ctx.Done():
-						return ctx.Err()
-					case <-time.After(delay):
-					}
+				backoffAttempt := attempt + 1
+				if connectedOnce {
+					backoffAttempt = 1
 				}
+				base := time.Duration(backoffAttempt) * time.Second
+				jitter := time.Duration(rand.Intn(500)) * time.Millisecond
+				delay := base + jitter
+				if connectedOnce {
+					fmt.Fprintf(os.Stderr, "\n%s Retrying in %s...\n", recvRetryMessage(recvErr), delay.Round(time.Millisecond))
+				} else {
+					fmt.Fprintf(os.Stderr, "\n%s Retrying in %s (%d/%d)...\n", recvRetryMessage(recvErr), delay.Round(time.Millisecond), attempt+1, maxConnectRetries)
+				}
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(delay):
+				}
+				attempt++
 			}
 
 			fmt.Fprintln(os.Stderr)

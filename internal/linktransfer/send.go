@@ -86,15 +86,19 @@ func newSendCmd(ctx context.Context) *cobra.Command {
 
 			fmt.Fprintf(os.Stderr, "\nOn the other computer run:\n  lt recv %s\n\n", code)
 
-			// After a live receiver drops, re-arm the same code a few times so a
-			// new receiver can join without restarting the sender manually.
+			// Keep the sender available after a live receiver drops.
 			const maxRetries = 3
 			var sendErr error
-			for attempt := 0; attempt <= maxRetries; attempt++ {
+			connectedOnce := false
+			attempt := 0
+			for {
 				if attempt > 0 {
-					if isPeerGoneError(sendErr) {
-						fmt.Fprintf(os.Stderr, "\nReceiver left. Waiting for a new receiver with the same code (%d/%d)...\n  lt recv %s\n\n", attempt, maxRetries, code)
+					if connectedOnce {
+						fmt.Fprintf(os.Stderr, "\nReceiver left. Waiting for a new receiver with the same code...\n  lt recv %s\n\n", code)
 					} else {
+						if attempt > maxRetries {
+							break
+						}
 						fmt.Fprintf(os.Stderr, "\nTransfer failed (%v). Retrying with the same code (%d/%d)...\n  lt recv %s\n\n", sendErr, attempt, maxRetries, code)
 					}
 				}
@@ -127,7 +131,7 @@ func newSendCmd(ctx context.Context) *cobra.Command {
 						// The peer vanished at the same moment the transfer finished.
 						// Trust the actual transfer result so a successful completion
 						// is not misreported as a peer loss.
-						sendErr = sendResult
+						sendErr = transferResultAfterPeerDisconnect(sendErr, sendResult)
 					case <-time.After(time.Second):
 					}
 				case <-ctx.Done():
@@ -145,20 +149,28 @@ func newSendCmd(ctx context.Context) *cobra.Command {
 					return ctx.Err()
 				}
 
-				if attempt < maxRetries {
-					// Peer-gone: short pause then re-open wait. Other errors: backoff.
-					delay := 500 * time.Millisecond
-					if !isPeerGoneError(sendErr) {
-						base := time.Duration(attempt+1) * time.Second
-						jitter := time.Duration(rand.Intn(500)) * time.Millisecond
-						delay = base + jitter
-					}
-					select {
-					case <-ctx.Done():
-						return ctx.Err()
-					case <-time.After(delay):
-					}
+				partnerCount := 0
+				if trt.partnerCount != nil {
+					partnerCount = trt.partnerCount()
 				}
+				connectedOnce = transferSessionActive(connectedOnce, partnerCount, sendErr)
+				if !connectedOnce && attempt >= maxRetries {
+					break
+				}
+
+				// Peer-gone: short pause then re-open wait. Other errors: backoff.
+				delay := 500 * time.Millisecond
+				if !connectedOnce {
+					base := time.Duration(attempt+1) * time.Second
+					jitter := time.Duration(rand.Intn(500)) * time.Millisecond
+					delay = base + jitter
+				}
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(delay):
+				}
+				attempt++
 			}
 
 			if isPeerGoneError(sendErr) {
