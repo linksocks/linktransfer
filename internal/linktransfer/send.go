@@ -90,11 +90,15 @@ func newSendCmd(ctx context.Context) *cobra.Command {
 			const maxRetries = 3
 			var sendErr error
 			connectedOnce := false
+			waitingForReceiver := false
 			attempt := 0
 			for {
 				if attempt > 0 {
 					if connectedOnce {
-						fmt.Fprintf(os.Stderr, "\nReceiver left. Waiting for a new receiver with the same code...\n  lt recv %s\n\n", code)
+						if !waitingForReceiver {
+							fmt.Fprintf(os.Stderr, "\nReceiver left. Waiting for a new receiver with the same code...\n  lt recv %s\n\n", code)
+							waitingForReceiver = true
+						}
 					} else {
 						if attempt > maxRetries {
 							break

@@ -113,14 +113,25 @@ func watchPeerDisconnect(ctx context.Context, trt *tunnelRuntime, cancel context
 	go func() {
 		ticker := time.NewTicker(500 * time.Millisecond)
 		defer ticker.Stop()
+		currentDisconnect := func() <-chan struct{} {
+			if trt.disconnected == nil {
+				return nil
+			}
+			ch := trt.disconnected()
+			if ch == nil {
+				return nil
+			}
+			select {
+			case <-ch:
+				return nil
+			default:
+				return ch
+			}
+		}
 
 		seenPartner := trt.partnerCount() > 0
 		var lostSince time.Time
-
-		var discCh <-chan struct{}
-		if trt.disconnected != nil {
-			discCh = trt.disconnected()
-		}
+		discCh := currentDisconnect()
 
 		for {
 			select {
@@ -132,9 +143,7 @@ func watchPeerDisconnect(ctx context.Context, trt *tunnelRuntime, cancel context
 					done <- fmt.Errorf("%s is gone (tunnel closed)", peerLabel)
 					return
 				}
-				if trt.disconnected != nil {
-					discCh = trt.disconnected()
-				}
+				discCh = nil
 			case <-ticker.C:
 				count := trt.partnerCount()
 				if count > 0 {
@@ -153,6 +162,9 @@ func watchPeerDisconnect(ctx context.Context, trt *tunnelRuntime, cancel context
 					cancel()
 					done <- fmt.Errorf("%s is gone", peerLabel)
 					return
+				}
+				if discCh == nil {
+					discCh = currentDisconnect()
 				}
 			}
 		}
@@ -218,6 +230,7 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 			const maxConnectRetries = 3
 			var recvErr error
 			connectedOnce := false
+			waitingForSender := false
 			attempt := 0
 
 			for {
@@ -229,7 +242,10 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 
 				if attempt > 0 {
 					if connectedOnce {
-						fmt.Fprintf(os.Stderr, "\nWaiting for sender to reconnect...\n")
+						if !waitingForSender {
+							fmt.Fprintf(os.Stderr, "\nWaiting for sender to reconnect...\n")
+							waitingForSender = true
+						}
 					} else {
 						if attempt > maxConnectRetries {
 							break
@@ -305,7 +321,10 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 				jitter := time.Duration(rand.Intn(500)) * time.Millisecond
 				delay := base + jitter
 				if connectedOnce {
-					fmt.Fprintf(os.Stderr, "\n%s Retrying in %s...\n", recvRetryMessage(recvErr), delay.Round(time.Millisecond))
+					if !waitingForSender {
+						fmt.Fprintf(os.Stderr, "\n%s\n", recvRetryMessage(recvErr))
+						waitingForSender = true
+					}
 				} else {
 					fmt.Fprintf(os.Stderr, "\n%s Retrying in %s (%d/%d)...\n", recvRetryMessage(recvErr), delay.Round(time.Millisecond), attempt+1, maxConnectRetries)
 				}

@@ -5,7 +5,7 @@ go 1.24.0
 toolchain go1.24.12
 
 require (
-	github.com/linksocks/croc v1.0.5
+	github.com/linksocks/croc v1.0.6
 	github.com/linksocks/linksocks v1.8.3
 	github.com/rs/zerolog v1.33.0
 	github.com/schollz/logger v1.2.0

@@ -5,7 +5,9 @@ import (
 	"errors"
 	"io"
 	"net"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestIsPeerGoneError(t *testing.T) {
@@ -53,5 +55,41 @@ func TestTransferResultAfterPeerDisconnect(t *testing.T) {
 	transferErr := errors.New("checksum mismatch")
 	if got := transferResultAfterPeerDisconnect(peerErr, transferErr); !errors.Is(got, transferErr) {
 		t.Fatalf("transferResultAfterPeerDisconnect() = %v, want %v", got, transferErr)
+	}
+}
+
+func TestWatchPeerDisconnectIgnoresStaleClosedSignal(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	staleDisconnected := make(chan struct{})
+	close(staleDisconnected)
+	var partners atomic.Int32
+	partners.Store(1)
+
+	trt := &tunnelRuntime{
+		partnerCount: func() int {
+			return int(partners.Load())
+		},
+		disconnected: func() <-chan struct{} {
+			return staleDisconnected
+		},
+	}
+
+	done := watchPeerDisconnect(ctx, trt, cancel, "sender")
+	select {
+	case err := <-done:
+		t.Fatalf("watchPeerDisconnect() returned from stale signal: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	partners.Store(0)
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("watchPeerDisconnect() returned nil error")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("watchPeerDisconnect() did not detect the lost partner")
 	}
 }
