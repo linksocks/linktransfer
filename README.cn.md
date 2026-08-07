@@ -78,11 +78,11 @@ docker run --rm -i jackzzs/linktransfer recv <code>
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/linksocks/linksocks.js)
 
-部署完成后，两端通过 `--url` 和 `--token` 指定服务器和密钥即可：
+部署完成后，两端通过 `--url` 指定服务器即可：
 
 ```bash
-lt send ./file --url ws://your-server:8765 --token your_secret_token
-lt recv <code> --url ws://your-server:8765 --token your_secret_token
+lt send ./file --url ws://your-server:8765
+lt recv <code> --url ws://your-server:8765
 ```
 
 更多选项请参阅 [linksocks 文档](https://github.com/linksocks/linksocks)。

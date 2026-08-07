@@ -21,7 +21,8 @@ func newSendCmd(ctx context.Context) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "send [file-or-dir]...",
-		Short: "Send files or folders",
+		Short: "Send files or folders to another computer",
+		Long:  "Send one or more files or folders to another computer.\n\nThe transfer uses the linksocks relay and may establish a direct connection when available.",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 && text == "" {
 				return fmt.Errorf("must specify at least one path, or use --text")
@@ -35,10 +36,6 @@ func newSendCmd(ctx context.Context) *cobra.Command {
 			if code == "" {
 				code = getRandomCode()
 			}
-			if tunnel.Token == "" {
-				tunnel.Token = tokenFromCode(code)
-			}
-
 			fnames := make([]string, 0, len(args)+1)
 			for _, a := range args {
 				fnames = append(fnames, filepath.Clean(a))
@@ -78,7 +75,7 @@ func newSendCmd(ctx context.Context) *cobra.Command {
 			} else {
 				fmt.Fprintf(os.Stderr, "Connecting to %s ...\n", tunnel.URL)
 			}
-			trt, err := startSenderTunnel(ctx, tunnel)
+			trt, err := startSenderTunnel(ctx, tunnel, tokenFromCode(code))
 			if err != nil {
 				return err
 			}
@@ -125,19 +122,12 @@ func newSendCmd(ctx context.Context) *cobra.Command {
 					done <- client.Send(filesInfo, emptyFolders, totalFolders)
 				}()
 
-				receiverDisconnect := watchPeerDisconnect(attemptCtx, trt, cancelAttempt, "receiver")
+				receiverDisconnect := watchPeerDisconnect(attemptCtx, trt, "receiver")
 
 				select {
 				case sendErr = <-done:
-				case sendErr = <-receiverDisconnect:
-					select {
-					case sendResult := <-done:
-						// The peer vanished at the same moment the transfer finished.
-						// Trust the actual transfer result so a successful completion
-						// is not misreported as a peer loss.
-						sendErr = transferResultAfterPeerDisconnect(sendErr, sendResult)
-					case <-time.After(time.Second):
-					}
+				case peerErr := <-receiverDisconnect:
+					sendErr = waitForTransferAfterPeerDisconnect(done, peerErr, cancelAttempt)
 				case <-ctx.Done():
 					cancelAttempt()
 					return ctx.Err()

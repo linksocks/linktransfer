@@ -65,6 +65,23 @@ func transferResultAfterPeerDisconnect(peerErr, transferErr error) error {
 	return transferErr
 }
 
+const peerDisconnectGracePeriod = 3 * time.Second
+
+func waitForTransferAfterPeerDisconnect(done <-chan error, peerErr error, cancel context.CancelFunc) error {
+	select {
+	case transferErr := <-done:
+		return transferResultAfterPeerDisconnect(peerErr, transferErr)
+	case <-time.After(peerDisconnectGracePeriod):
+		cancel()
+		select {
+		case transferErr := <-done:
+			return transferResultAfterPeerDisconnect(peerErr, transferErr)
+		case <-time.After(time.Second):
+			return peerErr
+		}
+	}
+}
+
 func recvRetryMessage(err error) string {
 	if isPeerGoneError(err) {
 		return "Sender left the transfer."
@@ -98,10 +115,9 @@ func waitPeerReady(ctx context.Context, trt *tunnelRuntime, timeout time.Duratio
 	}
 }
 
-// watchPeerDisconnect cancels the attempt when a previously-seen tunnel partner
-// disappears, or when this side's WebSocket drops after a partner was present.
+// watchPeerDisconnect reports when a previously-seen tunnel partner disappears.
 // peerLabel is used only in the returned error ("sender" / "receiver").
-func watchPeerDisconnect(ctx context.Context, trt *tunnelRuntime, cancel context.CancelFunc, peerLabel string) <-chan error {
+func watchPeerDisconnect(ctx context.Context, trt *tunnelRuntime, peerLabel string) <-chan error {
 	if trt == nil || trt.partnerCount == nil {
 		return nil
 	}
@@ -139,7 +155,6 @@ func watchPeerDisconnect(ctx context.Context, trt *tunnelRuntime, cancel context
 				return
 			case <-discCh:
 				if seenPartner {
-					cancel()
 					done <- fmt.Errorf("%s is gone (tunnel closed)", peerLabel)
 					return
 				}
@@ -159,7 +174,6 @@ func watchPeerDisconnect(ctx context.Context, trt *tunnelRuntime, cancel context
 					if time.Since(lostSince) < 2*time.Second {
 						continue
 					}
-					cancel()
 					done <- fmt.Errorf("%s is gone", peerLabel)
 					return
 				}
@@ -175,11 +189,13 @@ func watchPeerDisconnect(ctx context.Context, trt *tunnelRuntime, cancel context
 func newRecvCmd(ctx context.Context) *cobra.Command {
 	var out string
 	var code string
+	var overwrite bool
 	var tunnel tunnelOptions
 
 	cmd := &cobra.Command{
 		Use:   "recv [code]",
-		Short: "Receive files",
+		Short: "Receive files or folders from another computer",
+		Long:  "Receive files or folders from another computer using a transfer code.\n\nUse --out to choose the destination and --overwrite to skip existing-file prompts.",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if tunnel.Threads < 1 {
@@ -195,16 +211,12 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 				return fmt.Errorf("missing code (provide as argument or set CROC_SECRET)")
 			}
 
-			if tunnel.Token == "" {
-				tunnel.Token = tokenFromCode(code)
-			}
-
 			if tunnel.URL == defaultWSURL {
 				fmt.Fprintf(os.Stderr, "Connecting to public relay server ...\n")
 			} else {
 				fmt.Fprintf(os.Stderr, "Connecting to %s ...\n", tunnel.URL)
 			}
-			trt, err := startReceiverTunnel(ctx, tunnel)
+			trt, err := startReceiverTunnel(ctx, tunnel, tokenFromCode(code))
 			if err != nil {
 				return err
 			}
@@ -264,7 +276,7 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 				}
 
 				attemptCtx, cancelAttempt := context.WithCancel(ctx)
-				ops.Overwrite = attempt > 0
+				ops.Overwrite = overwrite || attempt > 0
 				client, err := croc.NewCtx(attemptCtx, ops)
 				if err != nil {
 					cancelAttempt()
@@ -275,19 +287,12 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 				go func() {
 					done <- client.Receive()
 				}()
-				senderDisconnect := watchPeerDisconnect(attemptCtx, trt, cancelAttempt, "sender")
+				senderDisconnect := watchPeerDisconnect(attemptCtx, trt, "sender")
 
 				select {
 				case recvErr = <-done:
-				case recvErr = <-senderDisconnect:
-					select {
-					case recvResult := <-done:
-						// The peer vanished at the same moment the transfer finished.
-						// Trust the actual transfer result so a successful completion
-						// is not misreported as a peer loss.
-						recvErr = transferResultAfterPeerDisconnect(recvErr, recvResult)
-					case <-time.After(time.Second):
-					}
+				case peerErr := <-senderDisconnect:
+					recvErr = waitForTransferAfterPeerDisconnect(done, peerErr, cancelAttempt)
 				case <-ctx.Done():
 					cancelAttempt()
 					return ctx.Err()
@@ -349,6 +354,7 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 
 	cmd.Flags().StringVar(&out, "out", ".", "Output folder")
 	cmd.Flags().StringVarP(&code, "code", "c", "", "Code phrase")
+	cmd.Flags().BoolVar(&overwrite, "overwrite", false, "Overwrite existing files without prompting")
 	addTunnelFlags(cmd, &tunnel)
 
 	return cmd

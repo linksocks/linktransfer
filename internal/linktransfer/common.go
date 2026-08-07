@@ -30,10 +30,10 @@ const (
 )
 
 type tunnelOptions struct {
-	URL     string
-	Token   string
-	Debug   bool
-	Threads int
+	URL        string
+	Debug      bool
+	Threads    int
+	DirectMode string
 }
 
 func tokenFromCode(code string) string {
@@ -82,13 +82,25 @@ func newLinksocksLogger(debug bool) zerolog.Logger {
 	return logger
 }
 
+func applyDirectMode(opt *linksocks.ClientOption, raw string) error {
+	if strings.TrimSpace(raw) == "" {
+		raw = string(linksocks.DirectModeAuto)
+	}
+	mode, err := linksocks.ParseDirectMode(raw)
+	if err != nil {
+		return err
+	}
+	opt.WithDirectMode(mode)
+	return nil
+}
+
 type tunnelRuntime struct {
 	close        func()
 	partnerCount func() int
 	disconnected func() <-chan struct{}
 }
 
-func startSenderTunnel(ctx context.Context, t tunnelOptions) (*tunnelRuntime, error) {
+func startSenderTunnel(ctx context.Context, t tunnelOptions, token string) (*tunnelRuntime, error) {
 	logger := newLinksocksLogger(t.Debug)
 
 	opt := linksocks.DefaultClientOption().
@@ -99,6 +111,9 @@ func startSenderTunnel(ctx context.Context, t tunnelOptions) (*tunnelRuntime, er
 		WithSocksWaitServer(true).
 		WithReconnect(true).
 		WithLogger(logger)
+	if err := applyDirectMode(opt, t.DirectMode); err != nil {
+		return nil, err
+	}
 
 	client := linksocks.NewLinkSocksClient("", opt)
 	if err := client.WaitReady(ctx, 0); err != nil {
@@ -106,14 +121,14 @@ func startSenderTunnel(ctx context.Context, t tunnelOptions) (*tunnelRuntime, er
 		return nil, fmt.Errorf("tunnel failed: %w", err)
 	}
 
-	if _, err := client.AddConnector(t.Token); err != nil {
+	if _, err := client.AddConnector(token); err != nil {
 		client.Close()
 		return nil, fmt.Errorf("register connector token: %w", err)
 	}
 
 	return &tunnelRuntime{
 		close: func() {
-			_ = client.RemoveConnector(t.Token)
+			_ = client.RemoveConnector(token)
 			client.Close()
 		},
 		partnerCount: client.GetPartnersCount,
@@ -121,7 +136,7 @@ func startSenderTunnel(ctx context.Context, t tunnelOptions) (*tunnelRuntime, er
 	}, nil
 }
 
-func startReceiverTunnel(ctx context.Context, t tunnelOptions) (*tunnelRuntime, error) {
+func startReceiverTunnel(ctx context.Context, t tunnelOptions, token string) (*tunnelRuntime, error) {
 	socksHost := "127.0.0.1"
 	socksBasePort := 18700
 	socksMaxTries := 5
@@ -147,8 +162,11 @@ func startReceiverTunnel(ctx context.Context, t tunnelOptions) (*tunnelRuntime, 
 			WithSocksWaitServer(true).
 			WithReconnect(true).
 			WithLogger(logger)
+		if err := applyDirectMode(opt, t.DirectMode); err != nil {
+			return nil, err
+		}
 
-		client = linksocks.NewLinkSocksClient(t.Token, opt)
+		client = linksocks.NewLinkSocksClient(token, opt)
 		if err := client.WaitReady(ctx, 0); err != nil {
 			client.Close()
 			continue
@@ -227,8 +245,8 @@ func applyCommonCrocOptions(ops *croc.Options) {
 }
 
 func addTunnelFlags(cmd *cobra.Command, t *tunnelOptions) {
-	cmd.Flags().StringVarP(&t.URL, "url", "u", defaultWSURL, "linksocks server URL")
-	cmd.Flags().StringVarP(&t.Token, "token", "t", "", "linksocks token (derived from code if omitted)")
+	cmd.Flags().StringVarP(&t.URL, "url", "u", defaultWSURL, "Relay linksocks server URL")
 	cmd.Flags().IntVar(&t.Threads, "threads", defaultThreads, "Number of parallel transfer threads")
 	cmd.Flags().BoolVar(&t.Debug, "debug", false, "Enable debug logs")
+	cmd.Flags().StringVarP(&t.DirectMode, "direct-mode", "m", string(linksocks.DirectModeAuto), "Direct connection mode: auto, relay-only, or direct-only")
 }

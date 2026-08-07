@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/linksocks/linksocks/linksocks"
 )
 
 func TestIsPeerGoneError(t *testing.T) {
@@ -58,6 +60,55 @@ func TestTransferResultAfterPeerDisconnect(t *testing.T) {
 	}
 }
 
+func TestRecvCommandHasOverwriteFlag(t *testing.T) {
+	cmd := newRecvCmd(context.Background())
+	if err := cmd.ParseFlags([]string{"--overwrite"}); err != nil {
+		t.Fatalf("ParseFlags() error = %v", err)
+	}
+	value, err := cmd.Flags().GetBool("overwrite")
+	if err != nil {
+		t.Fatalf("GetBool(overwrite) error = %v", err)
+	}
+	if !value {
+		t.Fatal("overwrite flag should be enabled")
+	}
+}
+
+func TestApplyDirectMode(t *testing.T) {
+	opt := linksocks.DefaultClientOption()
+	if err := applyDirectMode(opt, "relay-only"); err != nil {
+		t.Fatalf("applyDirectMode() error = %v", err)
+	}
+	if opt.DirectMode != linksocks.DirectModeRelayOnly {
+		t.Fatalf("applyDirectMode() set %q, want %q", opt.DirectMode, linksocks.DirectModeRelayOnly)
+	}
+
+	if err := applyDirectMode(opt, ""); err != nil {
+		t.Fatalf("applyDirectMode() with empty mode error = %v", err)
+	}
+	if opt.DirectMode != linksocks.DirectModeAuto {
+		t.Fatalf("empty direct mode set %q, want %q", opt.DirectMode, linksocks.DirectModeAuto)
+	}
+}
+
+func TestWaitForTransferAfterPeerDisconnectPrefersCompletion(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	done <- nil
+	peerErr := errors.New("receiver is gone")
+
+	if got := waitForTransferAfterPeerDisconnect(done, peerErr, cancel); got != nil {
+		t.Fatalf("waitForTransferAfterPeerDisconnect() = %v, want nil", got)
+	}
+	select {
+	case <-ctx.Done():
+		t.Fatal("completed transfer should not be canceled")
+	default:
+	}
+}
+
 func TestWatchPeerDisconnectIgnoresStaleClosedSignal(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -76,7 +127,7 @@ func TestWatchPeerDisconnectIgnoresStaleClosedSignal(t *testing.T) {
 		},
 	}
 
-	done := watchPeerDisconnect(ctx, trt, cancel, "sender")
+	done := watchPeerDisconnect(ctx, trt, "sender")
 	select {
 	case err := <-done:
 		t.Fatalf("watchPeerDisconnect() returned from stale signal: %v", err)

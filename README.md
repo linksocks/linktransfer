@@ -81,8 +81,8 @@ By default, linktransfer connects to the public linksocks service at `ws://l.zet
 Once deployed, point both sides to your server with `--url`:
 
 ```bash
-lt send ./file --url ws://your-server:8765 --token your_secret_token
-lt recv <code> --url ws://your-server:8765 --token your_secret_token
+lt send ./file --url ws://your-server:8765
+lt recv <code> --url ws://your-server:8765
 ```
 
 See the [linksocks documentation](https://github.com/linksocks/linksocks) for more options.
