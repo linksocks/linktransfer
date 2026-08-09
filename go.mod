@@ -3,10 +3,9 @@ module github.com/linksocks/linktransfer
 go 1.25.0
 
 require (
-	github.com/linksocks/croc v1.0.8
+	github.com/linksocks/croc v1.0.9
 	github.com/linksocks/linksocks v1.9.4
 	github.com/rs/zerolog v1.33.0
-	github.com/schollz/logger v1.2.0
 	github.com/spf13/cobra v1.8.1
 )
 
@@ -27,6 +26,7 @@ require (
 	github.com/quic-go/quic-go v0.59.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06 // indirect
+	github.com/schollz/logger v1.2.0 // indirect
 	github.com/schollz/pake/v3 v3.1.0 // indirect
 	github.com/schollz/peerdiscovery v1.7.6 // indirect
 	github.com/schollz/progressbar/v3 v3.19.0 // indirect

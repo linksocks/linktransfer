@@ -70,12 +70,13 @@ func newSendCmd(ctx context.Context) *cobra.Command {
 			}
 
 			basePort := relayBasePortFromCode(code, tunnel.Threads)
-			relayPorts, err := setupLocalRelay(basePort, tunnel.Threads+1, ops.RelayPassword)
+			relay, err := setupLocalRelay(ctx, basePort, tunnel.Threads+1, ops.RelayPassword)
 			if err != nil {
 				return fmt.Errorf("failed to start local relay: %w", err)
 			}
-			ops.RelayPorts = relayPorts
-			ops.RelayAddress = "127.0.0.1:" + relayPorts[0]
+			defer relay.close()
+			ops.RelayPorts = relay.ports
+			ops.RelayAddress = "127.0.0.1:" + relay.ports[0]
 
 			if tunnel.URL == defaultWSURL {
 				status("Connecting to public relay server ...\n")

@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/linksocks/croc/src/comm"
@@ -17,7 +18,6 @@ import (
 	"github.com/linksocks/croc/src/tcp"
 	"github.com/linksocks/linksocks/linksocks"
 	"github.com/rs/zerolog"
-	log "github.com/schollz/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -98,6 +98,20 @@ type tunnelRuntime struct {
 	close        func()
 	partnerCount func() int
 	disconnected func() <-chan struct{}
+}
+
+type localRelayRuntime struct {
+	ports  []string
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
+}
+
+func (r *localRelayRuntime) close() {
+	if r == nil {
+		return
+	}
+	r.cancel()
+	r.wg.Wait()
 }
 
 func startSenderTunnel(ctx context.Context, t tunnelOptions, token string) (*tunnelRuntime, error) {
@@ -187,7 +201,7 @@ func startReceiverTunnel(ctx context.Context, t tunnelOptions, token string) (*t
 	}, nil
 }
 
-func setupLocalRelay(basePort, numPorts int, password string) ([]string, error) {
+func setupLocalRelay(ctx context.Context, basePort, numPorts int, password string) (*localRelayRuntime, error) {
 	ports := relayPortsFromBase(basePort, numPorts)
 
 	for _, p := range ports {
@@ -199,15 +213,21 @@ func setupLocalRelay(basePort, numPorts int, password string) ([]string, error) 
 	}
 
 	debugLevel := "warn"
+	relayCtx, cancel := context.WithCancel(ctx)
+	runtime := &localRelayRuntime{ports: ports, cancel: cancel}
 
 	tcpPorts := strings.Join(ports[1:], ",")
 	for i := 1; i < len(ports); i++ {
+		runtime.wg.Add(1)
 		go func(p string) {
-			_ = tcp.Run(debugLevel, "127.0.0.1", p, password)
+			defer runtime.wg.Done()
+			_ = tcp.RunCtx(relayCtx, debugLevel, "127.0.0.1", p, password)
 		}(ports[i])
 	}
+	runtime.wg.Add(1)
 	go func() {
-		_ = tcp.Run(debugLevel, "127.0.0.1", ports[0], password, tcpPorts)
+		defer runtime.wg.Done()
+		_ = tcp.RunCtx(relayCtx, debugLevel, "127.0.0.1", ports[0], password, tcpPorts)
 	}()
 
 	// Wait for relay to start accepting connections.
@@ -217,19 +237,22 @@ func setupLocalRelay(basePort, numPorts int, password string) ([]string, error) 
 			break
 		}
 		if time.Now().After(deadline) {
+			runtime.close()
 			return nil, fmt.Errorf("local relay did not become ready on 127.0.0.1:%s", ports[0])
 		}
-		time.Sleep(50 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			runtime.close()
+			return nil, ctx.Err()
+		case <-time.After(50 * time.Millisecond):
+		}
 	}
 
-	return ports, nil
+	return runtime, nil
 }
 
 func applyCommonCrocOptions(ops *croc.Options) {
-	// croc uses github.com/schollz/logger (a global logger). The upstream croc
-	// package sets it to debug in init(), which causes noisy debug logs before
-	// options are applied. Force warn level for clean CLI output.
-	log.SetLevel("warn")
+	croc.Debug(false)
 	if hostname, err := os.Hostname(); err == nil && hostname != "" {
 		ops.DisplayName = hostname
 	} else {
