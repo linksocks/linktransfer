@@ -115,7 +115,7 @@ func startSenderTunnel(ctx context.Context, t tunnelOptions, token string) (*tun
 		return nil, err
 	}
 
-	client := linksocks.NewLinkSocksClient("", opt)
+	client := linksocks.NewLinkSocksClient(os.Getenv("LINKSOCKS_TOKEN"), opt)
 	if err := client.WaitReady(ctx, 0); err != nil {
 		client.Close()
 		return nil, fmt.Errorf("tunnel failed: %w", err)

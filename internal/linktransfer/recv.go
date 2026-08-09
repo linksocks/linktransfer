@@ -190,6 +190,10 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 	var out string
 	var code string
 	var overwrite bool
+	var stdout bool
+	var yes bool
+	var ask bool
+	var quiet bool
 	var tunnel tunnelOptions
 
 	cmd := &cobra.Command{
@@ -198,6 +202,11 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 		Long:  "Receive files or folders from another computer using a transfer code.\n\nUse --out to choose the destination and --overwrite to skip existing-file prompts.",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			status := func(format string, args ...any) {
+				if !quiet {
+					fmt.Fprintf(os.Stderr, format, args...)
+				}
+			}
 			if tunnel.Threads < 1 {
 				return fmt.Errorf("--threads must be at least 1")
 			}
@@ -212,25 +221,18 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 			}
 
 			if tunnel.URL == defaultWSURL {
-				fmt.Fprintf(os.Stderr, "Connecting to public relay server ...\n")
+				status("Connecting to public relay server ...\n")
 			} else {
-				fmt.Fprintf(os.Stderr, "Connecting to %s ...\n", tunnel.URL)
+				status("Connecting to %s ...\n", tunnel.URL)
 			}
 			trt, err := startReceiverTunnel(ctx, tunnel, tokenFromCode(code))
 			if err != nil {
 				return err
 			}
 			defer trt.close()
-			fmt.Fprintf(os.Stderr, "Tunnel ready, connecting to sender...\n")
+			status("Tunnel ready, connecting to sender...\n")
 
-			ops := croc.Options{IsSender: false}
-			applyCommonCrocOptions(&ops)
-			ops.SharedSecret = code
-			ops.RelayPassword = models.DEFAULT_PASSPHRASE
-			ops.RelayPorts = relayPortsFromCode(code, tunnel.Threads)
-			ops.RelayAddress = "localhost:" + ops.RelayPorts[0]
-			ops.NoPrompt = true
-			ops.SilenceInstructions = true
+			ops := buildRecvOptions(code, tunnel.Threads, stdout, ask, quiet)
 
 			if out != "" {
 				if err := os.Chdir(out); err != nil {
@@ -255,14 +257,14 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 				if attempt > 0 {
 					if connectedOnce {
 						if !waitingForSender {
-							fmt.Fprintf(os.Stderr, "\nWaiting for sender to reconnect...\n")
+							status("\nWaiting for sender to reconnect...\n")
 							waitingForSender = true
 						}
 					} else {
 						if attempt > maxConnectRetries {
 							break
 						}
-						fmt.Fprintf(os.Stderr, "\nWaiting for sender to be ready...\n")
+						status("\nWaiting for sender to be ready...\n")
 					}
 					if ctx.Err() != nil {
 						return ctx.Err()
@@ -271,7 +273,7 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 						if ctx.Err() != nil {
 							return ctx.Err()
 						}
-						fmt.Fprintf(os.Stderr, "Sender not detected, attempting reconnect...\n")
+						status("Sender not detected, attempting reconnect...\n")
 					}
 				}
 
@@ -300,7 +302,7 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 				cancelAttempt()
 
 				if recvErr == nil {
-					fmt.Fprintln(os.Stderr, "Transfer complete.")
+					status("Transfer complete.\n")
 					return nil
 				}
 
@@ -327,11 +329,11 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 				delay := base + jitter
 				if connectedOnce {
 					if !waitingForSender {
-						fmt.Fprintf(os.Stderr, "\n%s\n", recvRetryMessage(recvErr))
+						status("\n%s\n", recvRetryMessage(recvErr))
 						waitingForSender = true
 					}
 				} else {
-					fmt.Fprintf(os.Stderr, "\n%s Retrying in %s (%d/%d)...\n", recvRetryMessage(recvErr), delay.Round(time.Millisecond), attempt+1, maxConnectRetries)
+					status("\n%s Retrying in %s (%d/%d)...\n", recvRetryMessage(recvErr), delay.Round(time.Millisecond), attempt+1, maxConnectRetries)
 				}
 				select {
 				case <-ctx.Done():
@@ -341,7 +343,7 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 				attempt++
 			}
 
-			fmt.Fprintln(os.Stderr)
+			status("\n")
 			if isPeerGoneError(recvErr) {
 				return fmt.Errorf("transfer interrupted: sender left (code: %s)", code)
 			}
@@ -355,7 +357,26 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 	cmd.Flags().StringVar(&out, "out", ".", "Output folder")
 	cmd.Flags().StringVarP(&code, "code", "c", "", "Code phrase")
 	cmd.Flags().BoolVar(&overwrite, "overwrite", false, "Overwrite existing files without prompting")
+	cmd.Flags().BoolVar(&stdout, "stdout", false, "Write received content to stdout instead of files")
+	cmd.Flags().BoolVar(&yes, "yes", false, "Automatically agree to all prompts")
+	cmd.Flags().BoolVar(&ask, "ask", false, "Confirm the sender machine before receiving")
+	cmd.Flags().BoolVar(&quiet, "quiet", false, "Disable all output")
 	addTunnelFlags(cmd, &tunnel)
 
 	return cmd
+}
+
+func buildRecvOptions(code string, threads int, stdout, ask, quiet bool) croc.Options {
+	ops := croc.Options{IsSender: false}
+	applyCommonCrocOptions(&ops)
+	ops.SharedSecret = code
+	ops.RelayPassword = models.DEFAULT_PASSPHRASE
+	ops.RelayPorts = relayPortsFromCode(code, threads)
+	ops.RelayAddress = "localhost:" + ops.RelayPorts[0]
+	ops.NoPrompt = true
+	ops.Ask = ask
+	ops.Quiet = quiet
+	ops.Stdout = stdout
+	ops.SilenceInstructions = true
+	return ops
 }

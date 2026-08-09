@@ -17,6 +17,14 @@ import (
 func newSendCmd(ctx context.Context) *cobra.Command {
 	var code string
 	var text string
+	var zipFolder bool
+	var noCompress bool
+	var gitIgnore bool
+	var exclude []string
+	var throttleUpload string
+	var yes bool
+	var ask bool
+	var quiet bool
 	var tunnel tunnelOptions
 
 	cmd := &cobra.Command{
@@ -30,6 +38,11 @@ func newSendCmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			status := func(format string, args ...any) {
+				if !quiet {
+					fmt.Fprintf(os.Stderr, format, args...)
+				}
+			}
 			if tunnel.Threads < 1 {
 				return fmt.Errorf("--threads must be at least 1")
 			}
@@ -49,13 +62,7 @@ func newSendCmd(ctx context.Context) *cobra.Command {
 				fnames = append(fnames, fname)
 			}
 
-			ops := croc.Options{IsSender: true}
-			applyCommonCrocOptions(&ops)
-			ops.SharedSecret = code
-			ops.SendingText = text != ""
-			ops.RelayPassword = models.DEFAULT_PASSPHRASE
-			ops.DisableClipboard = true
-			ops.SilenceInstructions = true
+			ops := buildSendOptions(code, text, zipFolder, noCompress, gitIgnore, yes, ask, quiet, exclude, throttleUpload)
 
 			filesInfo, emptyFolders, totalFolders, err := croc.GetFilesInfo(fnames, ops.ZipFolder, ops.GitIgnore, ops.Exclude)
 			if err != nil {
@@ -71,9 +78,9 @@ func newSendCmd(ctx context.Context) *cobra.Command {
 			ops.RelayAddress = "127.0.0.1:" + relayPorts[0]
 
 			if tunnel.URL == defaultWSURL {
-				fmt.Fprintf(os.Stderr, "Connecting to public relay server ...\n")
+				status("Connecting to public relay server ...\n")
 			} else {
-				fmt.Fprintf(os.Stderr, "Connecting to %s ...\n", tunnel.URL)
+				status("Connecting to %s ...\n", tunnel.URL)
 			}
 			trt, err := startSenderTunnel(ctx, tunnel, tokenFromCode(code))
 			if err != nil {
@@ -81,7 +88,7 @@ func newSendCmd(ctx context.Context) *cobra.Command {
 			}
 			defer trt.close()
 
-			fmt.Fprintf(os.Stderr, "\nOn the other computer run:\n  lt recv %s\n\n", code)
+			status("\nOn the other computer run:\n  lt recv %s\n\n", code)
 
 			// Keep the sender available after a live receiver drops.
 			const maxRetries = 3
@@ -93,14 +100,14 @@ func newSendCmd(ctx context.Context) *cobra.Command {
 				if attempt > 0 {
 					if connectedOnce {
 						if !waitingForReceiver {
-							fmt.Fprintf(os.Stderr, "\nReceiver left. Waiting for a new receiver with the same code...\n  lt recv %s\n\n", code)
+							status("\nReceiver left. Waiting for a new receiver with the same code...\n  lt recv %s\n\n", code)
 							waitingForReceiver = true
 						}
 					} else {
 						if attempt > maxRetries {
 							break
 						}
-						fmt.Fprintf(os.Stderr, "\nTransfer failed (%v). Retrying with the same code (%d/%d)...\n  lt recv %s\n\n", sendErr, attempt, maxRetries, code)
+						status("\nTransfer failed (%v). Retrying with the same code (%d/%d)...\n  lt recv %s\n\n", sendErr, attempt, maxRetries, code)
 					}
 				}
 
@@ -135,7 +142,7 @@ func newSendCmd(ctx context.Context) *cobra.Command {
 				cancelAttempt()
 
 				if sendErr == nil {
-					fmt.Fprintln(os.Stderr, "Transfer complete.")
+					status("Transfer complete.\n")
 					return nil
 				}
 
@@ -179,7 +186,34 @@ func newSendCmd(ctx context.Context) *cobra.Command {
 
 	cmd.Flags().StringVarP(&code, "code", "c", "", "Code phrase (random if omitted)")
 	cmd.Flags().StringVar(&text, "text", "", "Send text instead of files")
+	cmd.Flags().BoolVar(&zipFolder, "zip", false, "Zip folders before sending")
+	cmd.Flags().BoolVar(&noCompress, "no-compress", false, "Disable compression during transfer")
+	cmd.Flags().BoolVar(&gitIgnore, "git", false, "Respect .gitignore and skip ignored files")
+	cmd.Flags().StringSliceVar(&exclude, "exclude", nil, "Exclude files matching any of the comma-separated strings")
+	cmd.Flags().StringVar(&throttleUpload, "throttleUpload", "", "Throttle upload speed (e.g. 500k)")
+	cmd.Flags().BoolVar(&yes, "yes", false, "Automatically agree to all prompts")
+	cmd.Flags().BoolVar(&ask, "ask", false, "Require confirmation on both machines")
+	cmd.Flags().BoolVar(&quiet, "quiet", false, "Disable all output")
 	addTunnelFlags(cmd, &tunnel)
 
 	return cmd
+}
+
+func buildSendOptions(code, text string, zipFolder, noCompress, gitIgnore, yes, ask, quiet bool, exclude []string, throttleUpload string) croc.Options {
+	ops := croc.Options{IsSender: true}
+	applyCommonCrocOptions(&ops)
+	ops.SharedSecret = code
+	ops.SendingText = text != ""
+	ops.RelayPassword = models.DEFAULT_PASSPHRASE
+	ops.DisableClipboard = true
+	ops.SilenceInstructions = true
+	ops.ZipFolder = zipFolder
+	ops.NoCompress = noCompress
+	ops.GitIgnore = gitIgnore
+	ops.Exclude = exclude
+	ops.ThrottleUpload = throttleUpload
+	ops.NoPrompt = yes
+	ops.Ask = ask
+	ops.Quiet = quiet
+	return ops
 }
