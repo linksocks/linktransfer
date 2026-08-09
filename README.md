@@ -91,3 +91,5 @@ See the [linksocks documentation](https://github.com/linksocks/linksocks) for mo
 ## License
 
 Linktransfer is open source under the MIT license.
+
+Thanks to [Linux.do](https://linux.do) for supporting our open-source promotion.

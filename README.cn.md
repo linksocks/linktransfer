@@ -92,3 +92,4 @@ lt recv <code> --url ws://your-server:8765
 
 Linktransfer 基于 MIT 许可证开源。
 
+感谢 [Linux.do](https://linux.do) 支持进行开源推广。
