@@ -1,0 +1,17 @@
+.git
+.codegraph
+.github
+.vscode
+ref
+recv
+testfile
+testfiles
+linktransfer
+lt
+*.test
+*.out
+coverage.*
+*.coverprofile
+profile.cov
+go.work
+go.work.sum

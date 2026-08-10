@@ -32,6 +32,16 @@ jobs:
           echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Read Go version
+        id: go-version
+        shell: bash
+        run: |
+          version="$(sed -nE 's/^go[[:space:]]+([0-9]+\.[0-9]+)(\.[0-9]+)?$/\1/p' go.mod | head -n1)"
+          if [[ -z "$version" ]]; then
+            echo "Unable to read the Go version from go.mod" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
@@ -48,6 +58,8 @@ jobs:
         with:
           context: .
           platforms: ${{ matrix.platform }}
+          build-args: |
+            GO_VERSION=${{ steps.go-version.outputs.version }}
           labels: ${{ steps.meta.outputs.labels }}
           outputs: type=image,"name=${{ env.REGISTRY_IMAGE }}",push-by-digest=true,name-canonical=true,push=false
           cache-to: type=gha,mode=max
@@ -68,6 +80,8 @@ jobs:
         with:
           context: .
           platforms: ${{ matrix.platform }}
+          build-args: |
+            GO_VERSION=${{ steps.go-version.outputs.version }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           outputs: type=image,"name=${{ env.REGISTRY_IMAGE }}",push-by-digest=true,name-canonical=true,push=true

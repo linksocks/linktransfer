@@ -1,12 +1,15 @@
 # Build stage
-FROM golang:1.24-alpine AS builder
+ARG GO_VERSION=1.25
+FROM golang:${GO_VERSION}-alpine AS builder
 
 WORKDIR /src
 
 RUN apk add --no-cache git
 
+ARG GOPROXY=https://proxy.golang.org|direct
+
 COPY go.mod go.sum ./
-RUN go mod download
+RUN GOPROXY="$GOPROXY" go mod download
 
 COPY . .
 
