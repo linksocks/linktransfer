@@ -9,7 +9,7 @@ Linktransfer is a CLI tool for sending files, folders, or text between two machi
 ## Features
 
 1. Send and receive with a simple command — no server setup required.
-2. Nearly unlimited traffic with high speed.
+2. Nearly unlimited traffic with high speed (full bandwidth in both relay mode and when hole punching succeeds).
 3. Resumable transfers — interrupted uploads and downloads pick up where they left off.
 4. Automatic NAT traversal on LAN — seamless local network transfers.
 5. Self-hostable relay server via [linksocks.js](https://github.com/linksocks/linksocks.js), deployable on Cloudflare.
