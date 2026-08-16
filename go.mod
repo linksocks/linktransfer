@@ -3,7 +3,7 @@ module github.com/linksocks/linktransfer
 go 1.25.0
 
 require (
-	github.com/linksocks/croc v1.0.9
+	github.com/linksocks/croc v1.1.0
 	github.com/linksocks/linksocks v1.9.4
 	github.com/rs/zerolog v1.33.0
 	github.com/spf13/cobra v1.8.1
