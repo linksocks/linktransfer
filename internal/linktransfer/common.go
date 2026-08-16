@@ -24,8 +24,11 @@ import (
 const defaultWSURL = "ws://l.zetx.tech"
 
 const (
-	relayPortMin   = 20000
-	relayPortMax   = 60000
+	relayPortMin = 20000
+	// Keep the range below the ephemeral port pool (Linux: 32768-60999,
+	// macOS/Windows: 49152-65535) so outbound connections can never
+	// steal a relay port via EADDRINUSE.
+	relayPortMax   = 32000
 	defaultThreads = 4
 )
 
