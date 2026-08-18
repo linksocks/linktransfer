@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/linksocks/croc v1.1.0
-	github.com/linksocks/linksocks v1.9.4
+	github.com/linksocks/linksocks v1.9.5
 	github.com/rs/zerolog v1.33.0
 	github.com/spf13/cobra v1.8.1
 )
@@ -41,7 +41,3 @@ require (
 	golang.org/x/term v0.43.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 )
-
-// Use the in-tree linksocks sources so local modifications (e.g. access
-// control) take effect.
-replace github.com/linksocks/linksocks => ./ref/linksocks
