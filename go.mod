@@ -34,10 +34,14 @@ require (
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/tscholl2/siec v0.0.0-20240310163802-c2c6f6198406 // indirect
 	github.com/twmb/murmur3 v1.1.8 // indirect
-	golang.org/x/crypto v0.51.0 // indirect
+	golang.org/x/crypto v0.52.0 // indirect
 	golang.org/x/net v0.55.0 // indirect
 	golang.org/x/sync v0.16.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/term v0.43.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 )
+
+// Use the in-tree linksocks sources so local modifications (e.g. access
+// control) take effect.
+replace github.com/linksocks/linksocks => ./ref/linksocks

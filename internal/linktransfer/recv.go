@@ -225,7 +225,7 @@ func newRecvCmd(ctx context.Context) *cobra.Command {
 			} else {
 				status("Connecting to %s ...\n", tunnel.URL)
 			}
-			trt, err := startReceiverTunnel(ctx, tunnel, tokenFromCode(code))
+			trt, err := startReceiverTunnel(ctx, tunnel, code, tokenFromCode(code))
 			if err != nil {
 				return err
 			}

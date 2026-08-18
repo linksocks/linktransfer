@@ -97,6 +97,32 @@ func applyDirectMode(opt *linksocks.ClientOption, raw string) error {
 	return nil
 }
 
+// relayEgressAccessControl builds the destination rule that confines tunnel
+// traffic to the relay ports derived from the transfer code. The connecting
+// (receiver) side may only reach the local relay on loopback, never arbitrary
+// addresses or ports through the tunnel.
+func relayEgressAccessControl(code string, threads int) (*linksocks.AccessControl, error) {
+	// The sender opens threads+2 ports (control + threads+1 data), the same
+	// count setupLocalRelay starts for a code; receivers connect to any of
+	// them, so the allowed range must cover the full set.
+	base := relayBasePortFromCode(code, threads)
+	ports := relayPortsFromBase(base, threads+1)
+	lo, err := strconv.Atoi(ports[0])
+	if err != nil {
+		return nil, err
+	}
+	hi, err := strconv.Atoi(ports[len(ports)-1])
+	if err != nil {
+		return nil, err
+	}
+	return linksocks.NewAccessControl([]linksocks.AccessRule{
+		{
+			Addrs: []string{"127.0.0.1", "::1"},
+			Ports: []linksocks.PortSpec{linksocks.PortRange(lo, hi)},
+		},
+	})
+}
+
 type tunnelRuntime struct {
 	close        func()
 	partnerCount func() int
@@ -117,7 +143,7 @@ func (r *localRelayRuntime) close() {
 	r.wg.Wait()
 }
 
-func startSenderTunnel(ctx context.Context, t tunnelOptions, token string) (*tunnelRuntime, error) {
+func startSenderTunnel(ctx context.Context, t tunnelOptions, code, token string) (*tunnelRuntime, error) {
 	logger := newLinksocksLogger(t.Debug)
 
 	opt := linksocks.DefaultClientOption().
@@ -131,6 +157,15 @@ func startSenderTunnel(ctx context.Context, t tunnelOptions, token string) (*tun
 	if err := applyDirectMode(opt, t.DirectMode); err != nil {
 		return nil, err
 	}
+
+	// The sender performs the outbound dial for every tunnel request; confine
+	// it to the local relay ports so a remote peer can never reach beyond the
+	// croc transfer.
+	ac, err := relayEgressAccessControl(code, t.Threads)
+	if err != nil {
+		return nil, err
+	}
+	opt.WithDialAccessControl(ac)
 
 	client := linksocks.NewLinkSocksClient(os.Getenv("LINKSOCKS_TOKEN"), opt)
 	if err := client.WaitReady(ctx, 0); err != nil {
@@ -153,7 +188,7 @@ func startSenderTunnel(ctx context.Context, t tunnelOptions, token string) (*tun
 	}, nil
 }
 
-func startReceiverTunnel(ctx context.Context, t tunnelOptions, token string) (*tunnelRuntime, error) {
+func startReceiverTunnel(ctx context.Context, t tunnelOptions, code, token string) (*tunnelRuntime, error) {
 	socksHost := "127.0.0.1"
 	socksBasePort := 18700
 	socksMaxTries := 5
@@ -162,6 +197,13 @@ func startReceiverTunnel(ctx context.Context, t tunnelOptions, token string) (*t
 
 	var client *linksocks.LinkSocksClient
 	var socksPort int
+
+	// Restrict the SOCKS5 entry to the relay ports only, so the connecting
+	// side cannot use the tunnel to reach non-croc destinations.
+	ac, err := relayEgressAccessControl(code, t.Threads)
+	if err != nil {
+		return nil, err
+	}
 
 	for i := 0; i < socksMaxTries; i++ {
 		port := socksBasePort + i
@@ -178,7 +220,8 @@ func startReceiverTunnel(ctx context.Context, t tunnelOptions, token string) (*t
 			WithSocksPort(port).
 			WithSocksWaitServer(true).
 			WithReconnect(true).
-			WithLogger(logger)
+			WithLogger(logger).
+			WithEntryAccessControl(ac)
 		if err := applyDirectMode(opt, t.DirectMode); err != nil {
 			return nil, err
 		}

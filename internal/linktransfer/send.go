@@ -83,7 +83,7 @@ func newSendCmd(ctx context.Context) *cobra.Command {
 			} else {
 				status("Connecting to %s ...\n", tunnel.URL)
 			}
-			trt, err := startSenderTunnel(ctx, tunnel, tokenFromCode(code))
+			trt, err := startSenderTunnel(ctx, tunnel, code, tokenFromCode(code))
 			if err != nil {
 				return err
 			}

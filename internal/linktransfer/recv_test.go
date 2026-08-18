@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"strconv"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -88,6 +89,44 @@ func TestApplyDirectMode(t *testing.T) {
 	}
 	if opt.DirectMode != linksocks.DirectModeAuto {
 		t.Fatalf("empty direct mode set %q, want %q", opt.DirectMode, linksocks.DirectModeAuto)
+	}
+}
+
+func TestRelayEgressAccessControl(t *testing.T) {
+	ac, err := relayEgressAccessControl("test-code", 4)
+	if err != nil {
+		t.Fatalf("relayEgressAccessControl() error = %v", err)
+	}
+	if ac.Empty() {
+		t.Fatal("relayEgressAccessControl() must configure a restriction")
+	}
+
+	// Same port layout as setupLocalRelay: control + threads+1 data ports.
+	base := relayBasePortFromCode("test-code", 4)
+	ports := relayPortsFromBase(base, 4+1)
+	lo, _ := strconv.Atoi(ports[0])
+	hi, _ := strconv.Atoi(ports[len(ports)-1])
+
+	// Every relay port on loopback is reachable.
+	for _, p := range []int{lo, (lo + hi) / 2, hi} {
+		if !ac.Allow("127.0.0.1", p) {
+			t.Fatalf("loopback relay port %d should be allowed", p)
+		}
+		if !ac.Allow("localhost", p) {
+			t.Fatalf("localhost relay port %d should be allowed", p)
+		}
+	}
+
+	// Non-relay ports must be rejected.
+	for _, p := range []int{22, 80, 443, 65535, lo - 1, hi + 1} {
+		if ac.Allow("127.0.0.1", p) {
+			t.Fatalf("non-relay port %d must be blocked", p)
+		}
+	}
+
+	// Non-loopback destinations must be rejected even on relay ports.
+	if ac.Allow("192.168.1.5", lo) {
+		t.Fatal("non-loopback address must be blocked")
 	}
 }
 
